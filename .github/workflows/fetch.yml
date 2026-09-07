@@ -1,0 +1,43 @@
+name: CBS extraction worker
+
+on:
+  schedule:
+    # 03:00 UTC daily. CBS tables here update quarterly at most, so this
+    # is just how often we check -- the incremental-load check inside the
+    # script means it only actually pulls (and commits) when a table's
+    # Modified timestamp has changed.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run extraction worker
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python fetch_cbs_tables.py
+
+      - name: Commit updated pipeline state
+        run: |
+          git config user.name "cbs-pipeline-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add pipeline_state.json
+          git diff --cached --quiet && echo "Nothing new to commit." && exit 0
+          git commit -m "Update pipeline state $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push

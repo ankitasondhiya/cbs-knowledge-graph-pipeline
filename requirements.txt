@@ -1,0 +1,3 @@
+cbsodata
+requests
+boto3
