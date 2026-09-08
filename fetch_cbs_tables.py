@@ -50,7 +50,12 @@ TABLES = {
     "83149NED": "Bedrijven; opheffingen (business closures)",
     "83147NED": "Bedrijven; fusies en overnames (mergers & acquisitions)",
     "83827NED": "Groothandelsbedrijven; omzet (wholesale turnover -- core B2B trade)",
-    "85828NED": "Handel en diensten; omzet en productie (trade & services turnover)",
+    "85828NED": "Handel en diensten; omzet en productie (trade & services turnover, incl. zakelijke dienstverlening via its SBI branch dimension)",
+    "85958NED": "Invoer en uitvoer volgens eigendomsoverdracht (international trade in goods, headline)",
+    "84765NED": "Internationale handel; invoer en uitvoer van diensten naar land (international trade in services, by country -- direct B2B)",
+    "81578NED": "Vestigingen van bedrijven; bedrijfstak, regio (business establishments by sector & region)",
+    "83631NED": "Vestigingen van bedrijven; oprichtingen, bedrijfstak, regio (regional business openings)",
+    "83635NED": "Vestigingen van bedrijven; opheffingen, bedrijfstak, regio (regional business closures)",
 }
 
 LANDING_ZONE = "./landing_zone"
