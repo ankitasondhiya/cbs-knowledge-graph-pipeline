@@ -1,0 +1,78 @@
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix qb:   <http://purl.org/linked-data/cube#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix exo:  <https://data.cbs-knowledge-graph.example/ontology/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# Validation Gate (Transform & Validate stage, box 4 of 4).
+#
+# Nothing reaches the Incremental Load Controller unless it conforms to
+# every shape below. This is the "reject bad data, don't guess" rule
+# from the breadboard, made literal and enforceable.
+
+exo:ObservationShape
+    a sh:NodeShape ;
+    sh:targetClass qb:Observation ;
+    sh:property [
+        sh:path qb:dataSet ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Every Observation must belong to exactly one qb:DataSet." ;
+    ] ;
+    sh:property [
+        sh:path exo:region ;
+        sh:maxCount 1 ;
+        sh:message "An Observation may reference at most one region (not all tables carry a region dimension -- e.g. international trade tables use exo:country instead)." ;
+    ] ;
+    sh:property [
+        sh:path exo:variable ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class skos:Concept ;
+        sh:message "Every Observation must reference exactly one glossary concept (skos:Concept)." ;
+    ] ;
+    sh:property [
+        sh:path rdf:value ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:double ;
+        sh:message "Every Observation must carry exactly one numeric value." ;
+    ] ;
+    sh:property [
+        sh:path prov:wasDerivedFrom ;
+        sh:minCount 1 ;
+        sh:message "Every Observation must trace back to a source CBS table (provenance)." ;
+    ] ;
+    sh:property [
+        sh:path prov:generatedAtTime ;
+        sh:minCount 1 ;
+        sh:datatype xsd:dateTime ;
+        sh:message "Every Observation must be timestamped." ;
+    ] .
+
+exo:RegionShape
+    a sh:NodeShape ;
+    sh:targetSubjectsOf exo:regionCode ;
+    sh:property [
+        sh:path exo:regionCode ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:pattern "^(GM|WK|BU)[0-9]{4,8}$" ;
+        sh:message "Region code must be a valid CBS code (GM/WK/BU + digits)." ;
+    ] .
+
+exo:ConceptShape
+    a sh:NodeShape ;
+    sh:targetClass skos:Concept ;
+    sh:property [
+        sh:path skos:prefLabel ;
+        sh:minCount 1 ;
+        sh:message "Every glossary Concept must have at least one preferred label." ;
+    ] ;
+    sh:property [
+        sh:path skos:definition ;
+        sh:minCount 1 ;
+        sh:message "Every glossary Concept must have a definition -- this is what makes it a usable business glossary, not just a code list." ;
+    ] .

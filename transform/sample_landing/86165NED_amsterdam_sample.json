@@ -1,0 +1,41 @@
+{
+  "source_table": "86165NED",
+  "description": "Kerncijfers wijken en buurten (neighbourhood demographics)",
+  "source_modified": "2026-01-15T00:00:00",
+  "pulled_at": "20260115T060000Z",
+  "row_count": 3,
+  "_note": "SYNTHETIC SAMPLE for testing the transform stage only -- field names match the real 86165NED schema (confirmed from a live landed file), but the VALUES are fake, not real CBS figures.",
+  "rows": [
+    {
+      "ID": 1,
+      "WijkenEnBuurten": "GM0363",
+      "Gemeentenaam_1": "Amsterdam",
+      "SoortRegio_2": "Gemeente",
+      "Codering_3": "GM0363",
+      "AantalInwoners_5": 921000,
+      "HuishoudensTotaal_29": 480000,
+      "GemiddeldeWOZWaardeVanWoningen_39": 465,
+      "BedrijfsvestigingenTotaal_95": 210000
+    },
+    {
+      "ID": 2,
+      "WijkenEnBuurten": "WK036300",
+      "Gemeentenaam_1": "Amsterdam",
+      "SoortRegio_2": "Wijk",
+      "Codering_3": "WK036300",
+      "AantalInwoners_5": 89000,
+      "HuishoudensTotaal_29": 47000,
+      "GemiddeldeWOZWaardeVanWoningen_39": 520
+    },
+    {
+      "ID": 3,
+      "WijkenEnBuurten": "BU03630000",
+      "Gemeentenaam_1": "Amsterdam",
+      "SoortRegio_2": "Buurt",
+      "Codering_3": "BU03630000",
+      "AantalInwoners_5": 6100,
+      "GemiddeldeWOZWaardeVanWoningen_39": 545,
+      "GemiddeldInkomenPerInwoner_78": 38.2
+    }
+  ]
+}
