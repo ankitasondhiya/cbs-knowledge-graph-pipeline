@@ -47,6 +47,7 @@ import time
 import boto3
 
 from rdf_mapper import map_rows_to_graph
+from scope_filters import apply_scope
 from validate import run_validation
 
 RAW_PREFIX = "landing_zone/"       # matches fetch_cbs_tables.py's upload key exactly
@@ -78,35 +79,45 @@ def get_r2_client():
     return client, bucket
 
 
-def load_manifest(client, bucket) -> set:
+def load_manifest(client, bucket, manifest_key: str = MANIFEST_KEY) -> set:
     try:
-        obj = client.get_object(Bucket=bucket, Key=MANIFEST_KEY)
+        obj = client.get_object(Bucket=bucket, Key=manifest_key)
         return set(json.loads(obj["Body"].read())["processed_keys"])
     except client.exceptions.NoSuchKey:
         return set()
 
 
-def save_manifest(client, bucket, processed_keys: set):
+def save_manifest(client, bucket, processed_keys: set, manifest_key: str = MANIFEST_KEY):
     body = json.dumps({"processed_keys": sorted(processed_keys)}, indent=2).encode()
-    client.put_object(Bucket=bucket, Key=MANIFEST_KEY, Body=body, ContentType="application/json")
+    client.put_object(Bucket=bucket, Key=manifest_key, Body=body, ContentType="application/json")
 
 
-def process_payload(payload: dict, source_key: str):
+def process_payload(payload: dict, source_key: str, scope: str | None = None):
     """
-    Runs one landed file through map -> validate, in batches, printing
-    progress as it goes. Returns (nt_content_or_None, notes):
+    Runs one landed file through scope -> map -> validate, in batches,
+    printing progress as it goes. Returns (nt_content_or_None, notes):
       - nt_content: the validated triples in N-Triples format (one line
         per triple -- unlike Turtle, batches can just be concatenated,
         which is what makes streaming this simple), or None if EVERY
-        batch failed validation.
+        batch failed validation (or the scope filter dropped every row).
       - notes: a human-readable summary -- uncurated glossary fields
         seen, plus details of any batch that was rejected.
+
+    scope=None (the default): every row is processed, exactly as before.
+    scope="poc": rows are narrowed first via scope_filters.apply_scope --
+    see that file for what's kept and why (top-level industry sections,
+    a curated country list). This exists purely to fit a demo inside
+    AuraDB Free's 200k node / 400k relationship cap; validated/ under the
+    default (unscoped) run always still has everything.
     """
-    rows = payload["rows"]
     table_id = payload["source_table"]
+    rows = apply_scope(payload["rows"], table_id, scope)
     description = payload.get("description", "")
     pulled_at = payload["pulled_at"]
     run_id = source_key.replace("/", "_").replace(".json", "")
+
+    if not rows:
+        return None, "NOTE: --scope poc filtered out every row in this file -- nothing to map."
 
     total = len(rows)
     num_batches = max(1, (total + BATCH_SIZE - 1) // BATCH_SIZE)
@@ -149,9 +160,23 @@ def process_payload(payload: dict, source_key: str):
     return "".join(nt_parts), notes
 
 
-def run_r2():
+def _manifest_key(scope: str | None) -> str:
+    # A separate manifest per scope -- otherwise a --scope poc run would
+    # mark a raw file "processed" and a later FULL run would silently
+    # skip it forever, thinking it already has output for it.
+    return f"{VALIDATED_PREFIX}_processed_manifest_poc.json" if scope == "poc" else MANIFEST_KEY
+
+
+def _out_suffix(scope: str | None) -> str:
+    # Scoped and unscoped output live side by side in validated/ under
+    # different names, rather than one overwriting the other.
+    return ".poc.nt" if scope == "poc" else ".nt"
+
+
+def run_r2(scope: str | None = None):
     client, bucket = get_r2_client()
-    processed = load_manifest(client, bucket)
+    manifest_key = _manifest_key(scope)
+    processed = load_manifest(client, bucket, manifest_key)
 
     resp = client.list_objects_v2(Bucket=bucket, Prefix=RAW_PREFIX)
     keys = [o["Key"] for o in resp.get("Contents", []) if o["Key"] not in processed and o["Key"].endswith(".json")]
@@ -160,24 +185,25 @@ def run_r2():
         print("No new raw files to transform. Landing zone is fully processed.")
         return
 
-    print(f"Found {len(keys)} new raw file(s) to transform.")
+    label = f" (scope={scope})" if scope else ""
+    print(f"Found {len(keys)} new raw file(s) to transform{label}.")
     for key in keys:
         print(f"Processing {key} ...")
         obj = client.get_object(Bucket=bucket, Key=key)
         payload = json.loads(obj["Body"].read())
 
-        nt_content, notes = process_payload(payload, key)
+        nt_content, notes = process_payload(payload, key, scope)
         base = os.path.basename(key).replace(".json", "")
 
         if nt_content is not None:
-            out_key = f"{VALIDATED_PREFIX}{base}.nt"
+            out_key = f"{VALIDATED_PREFIX}{base}{_out_suffix(scope)}"
             client.put_object(Bucket=bucket, Key=out_key, Body=nt_content.encode(), ContentType="application/n-triples")
             print(f"  VALIDATED -> {out_key}")
         else:
-            print("  ALL batches failed validation -- nothing written to validated/.")
+            print("  Nothing written to validated/ (all batches failed validation, or --scope poc dropped every row).")
 
         if "NOTE:" in notes:
-            report_key = f"{REJECTED_PREFIX}{base}.notes.txt"
+            report_key = f"{REJECTED_PREFIX}{base}{_out_suffix(scope).replace('.nt', '')}.notes.txt"
             client.put_object(Bucket=bucket, Key=report_key, Body=notes.encode(), ContentType="text/plain")
             print(f"  Notes (uncurated fields / rejected batches) -> {report_key}")
 
@@ -185,12 +211,12 @@ def run_r2():
         # Save the manifest after EVERY file, not just at the end -- so a
         # later failure (or a cancelled run) doesn't forget files that
         # already succeeded and force a wasteful full re-run.
-        save_manifest(client, bucket, processed)
+        save_manifest(client, bucket, processed, manifest_key)
 
     print("Done. Manifest updated -- next run will skip everything already processed here.")
 
 
-def run_local():
+def run_local(scope: str | None = None):
     """Test mode: reads ./sample_landing/*.json, writes ./validated_output/*.nt. No R2 needed."""
     here = os.path.dirname(os.path.abspath(__file__))
     in_dir = os.path.join(here, "sample_landing")
@@ -198,21 +224,22 @@ def run_local():
     os.makedirs(out_dir, exist_ok=True)
 
     files = [f for f in os.listdir(in_dir) if f.endswith(".json")]
-    print(f"Found {len(files)} local sample file(s).")
+    label = f" (scope={scope})" if scope else ""
+    print(f"Found {len(files)} local sample file(s){label}.")
     for fname in files:
         with open(os.path.join(in_dir, fname)) as f:
             payload = json.load(f)
 
         print(f"Processing {fname} ...")
-        nt_content, notes = process_payload(payload, fname)
+        nt_content, notes = process_payload(payload, fname, scope)
 
         if nt_content is not None:
-            out_path = os.path.join(out_dir, fname.replace(".json", ".nt"))
+            out_path = os.path.join(out_dir, fname.replace(".json", _out_suffix(scope)))
             with open(out_path, "w", encoding="utf-8") as out:
                 out.write(nt_content)
             print(f"  VALIDATED -> {out_path}")
         else:
-            print("  ALL batches failed validation -- nothing written.")
+            print("  Nothing written (all batches failed validation, or --scope poc dropped every row).")
 
         print("  " + notes.split("\n\n")[0])
 
@@ -220,9 +247,15 @@ def run_local():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local", action="store_true", help="run against sample_landing/ instead of R2")
+    parser.add_argument(
+        "--scope", choices=["poc"], default=None,
+        help="poc: narrow rows to top-level industry sections + major trading partners "
+             "(see scope_filters.py) so the result fits AuraDB Free's node cap. "
+             "Omit for the full, unscoped dataset (the default).",
+    )
     args = parser.parse_args()
 
     if args.local:
-        run_local()
+        run_local(args.scope)
     else:
-        run_r2()
+        run_r2(args.scope)

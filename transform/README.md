@@ -57,6 +57,47 @@ export R2_ACCESS_KEY_ID=...
 export R2_SECRET_ACCESS_KEY=...
 export R2_BUCKET_NAME=...
 python run_transform.py
+
+# --scope poc: same as above, but narrows the largest tables down to
+# top-level industry sections and major trading partners (see
+# scope_filters.py) so the result fits inside AuraDB Free's 200k node /
+# 400k relationship cap for stage 3. Writes to validated/*.poc.nt (a
+# separate file and a separate manifest from the unscoped run, so neither
+# run interferes with the other -- run this any time without touching
+# your full-fidelity output):
+python run_transform.py --scope poc
+```
+
+## POC scoping (`--scope poc`)
+
+For a Neo4j AuraDB **Free**-tier demo, the full dataset doesn't fit --
+`81578NED` alone has 163,520 rows, driven by CBS breaking industries down
+to very fine sub-codes (`81589NED` has 1,487 distinct branch values, from
+`01 Landbouw` down to `01131 Teelt van groenten in volle grond`). Rather
+than drop whole tables, `--scope poc` narrows rows on the 5 tables that
+actually have a volume problem (checked against real landed data, not
+guessed):
+
+| Table | Full rows | `--scope poc` rows | Kept |
+|---|---|---|---|
+| `81578NED` | 163,520 | 2,352 | top-level industry sections only |
+| `83631NED` | 8,514 | 1,386 | top-level industry sections only |
+| `83635NED` | 8,385 | 1,365 | top-level industry sections only |
+| `84765NED` | 4,141 | 369 | major trading partners + total |
+| `81589NED` | 1,487 | 21 | top-level industry sections only |
+
+"Top-level industry section" means the 21 broadest SBI categories CBS
+itself tags (`A Landbouw, bosbouw en visserij`, `G Handel`, `J Informatie
+en communicatie`, ...) -- the same categories a business stakeholder
+already thinks in, not an arbitrary cutoff. Every other table (including
+`83827NED`, which shares the branch field but is only ever reported at a
+finer level CBS never rolls up to a section, and would be silently wiped
+out by a blanket top-level-only rule) passes through `--scope poc`
+completely untouched.
+
+The unscoped run is still the default and always produces the full,
+faithful dataset -- `--scope poc` is purely an opt-in narrowing for a
+demo that needs to fit a free database tier, not a replacement for it.
 ```
 
 Reads raw JSON from the `landing_zone/` prefix in your bucket (exactly

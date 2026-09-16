@@ -1,0 +1,43 @@
+name: CBS load worker
+
+# Runs automatically right after "CBS transform worker" (transform.yml)
+# finishes successfully -- so load only ever runs on data that's already
+# passed the Validation Gate. Doesn't touch fetch.yml or transform.yml.
+on:
+  workflow_run:
+    workflows: ["CBS transform worker"]
+    types: [completed]
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, any time
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    # Only proceed if this was triggered manually, or the transform run it's
+    # reacting to actually succeeded -- no point loading after a
+    # failed/partial transform.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r load/requirements.txt
+
+      - name: Load validated data into Neo4j
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          NEO4J_URI: ${{ secrets.NEO4J_URI }}
+          NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+        run: python load/run_load.py
