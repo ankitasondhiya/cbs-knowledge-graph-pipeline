@@ -6,7 +6,23 @@ fetch_cbs_tables.py already writes to -- landing_zone/<table>_<ts>.json),
 runs each through RDF Mapping -> Glossary Alignment -> Validation Gate,
 and writes conforming graphs to a "validated/" prefix in the same bucket,
 ready for the Incremental Load Controller (stage 3). Anything that fails
-validation goes to "rejected/" instead, with the SHACL report attached.
+validation is logged and skipped, with the exact SHACL reason -- see
+"How failures work" below.
+
+Processes rows in BATCHES rather than building one giant in-memory graph
+per table. Two of the 13 tables (81578NED: 163k+ rows, 86165NED: 18k+
+rows x ~100 fields each) are large enough that doing it all at once is
+genuinely slow and -- worse -- gives zero visible progress for minutes at
+a time, which looks identical to "stuck" in a CI log. Batching fixes
+both: bounded memory, and a progress line every batch so you can see it
+actually working.
+
+How failures work: each batch is validated independently. A validation
+failure in one batch of, say, 2000 rows out of a 163,520-row table no
+longer throws away the other 161,520 good rows -- only the bad batch is
+skipped, logged with its exact reason, and everything else still gets
+written. This is both more correct and faster than the original
+all-or-nothing-per-file approach.
 
 Reuses the exact same R2 env vars fetch_cbs_tables.py / your GitHub
 Actions workflow already use -- no new secrets needed:
@@ -26,6 +42,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import boto3
 
@@ -36,6 +53,8 @@ RAW_PREFIX = "landing_zone/"       # matches fetch_cbs_tables.py's upload key ex
 VALIDATED_PREFIX = "validated/"
 REJECTED_PREFIX = "rejected/"
 MANIFEST_KEY = "validated/_processed_manifest.json"
+
+BATCH_SIZE = 2000  # rows per batch -- keeps memory bounded and progress visible on large tables
 
 
 def get_r2_client():
@@ -73,24 +92,61 @@ def save_manifest(client, bucket, processed_keys: set):
 
 
 def process_payload(payload: dict, source_key: str):
-    """Runs one landed file through map -> validate. Returns (graph_or_None, report_or_notes)."""
+    """
+    Runs one landed file through map -> validate, in batches, printing
+    progress as it goes. Returns (nt_content_or_None, notes):
+      - nt_content: the validated triples in N-Triples format (one line
+        per triple -- unlike Turtle, batches can just be concatenated,
+        which is what makes streaming this simple), or None if EVERY
+        batch failed validation.
+      - notes: a human-readable summary -- uncurated glossary fields
+        seen, plus details of any batch that was rejected.
+    """
     rows = payload["rows"]
     table_id = payload["source_table"]
     description = payload.get("description", "")
     pulled_at = payload["pulled_at"]
     run_id = source_key.replace("/", "_").replace(".json", "")
 
-    graph, unverified = map_rows_to_graph(rows, table_id, description, run_id, pulled_at)
+    total = len(rows)
+    num_batches = max(1, (total + BATCH_SIZE - 1) // BATCH_SIZE)
+    print(f"  {total} rows, processing in {num_batches} batch(es) of up to {BATCH_SIZE}...")
 
-    conforms, report_text = run_validation(graph)
-    notes = report_text
-    if unverified:
-        notes = f"NOTE: {len(unverified)} concept(s) used auto-fallback labels (not yet curated in glossary.py): {unverified}\n\n{report_text}"
+    nt_parts = []
+    rejected_batches = []
+    all_unverified = set()
+    total_triples = 0
+    started = time.monotonic()
 
-    if not conforms:
+    for i in range(0, total, BATCH_SIZE):
+        batch = rows[i:i + BATCH_SIZE]
+        graph, unverified = map_rows_to_graph(batch, table_id, description, run_id, pulled_at)
+        all_unverified.update(unverified)
+
+        conforms, report_text = run_validation(graph)
+        if conforms:
+            nt_parts.append(graph.serialize(format="nt"))
+            total_triples += len(graph)
+        else:
+            batch_no = i // BATCH_SIZE + 1
+            rejected_batches.append(f"Batch {batch_no} (rows {i}-{i + len(batch)}):\n{report_text[:800]}")
+
+        done = min(i + BATCH_SIZE, total)
+        elapsed = time.monotonic() - started
+        print(f"    ...{done}/{total} rows ({elapsed:.0f}s elapsed)")
+
+    notes_lines = []
+    if all_unverified:
+        notes_lines.append(f"NOTE: {len(all_unverified)} concept(s) used auto-fallback labels (not yet curated in glossary.py): {sorted(all_unverified)}")
+    if rejected_batches:
+        notes_lines.append(f"NOTE: {len(rejected_batches)}/{num_batches} batch(es) failed validation and were skipped (their rows are NOT in the output):")
+        notes_lines.extend(rejected_batches)
+    notes = "\n\n".join(notes_lines) if notes_lines else "All batches validated cleanly."
+
+    if not nt_parts:
         return None, notes
 
-    return graph, notes
+    return "".join(nt_parts), notes
 
 
 def run_r2():
@@ -110,32 +166,32 @@ def run_r2():
         obj = client.get_object(Bucket=bucket, Key=key)
         payload = json.loads(obj["Body"].read())
 
-        graph, notes = process_payload(payload, key)
+        nt_content, notes = process_payload(payload, key)
         base = os.path.basename(key).replace(".json", "")
 
-        if graph is None:
-            out_key = f"{REJECTED_PREFIX}{base}.report.txt"
-            client.put_object(Bucket=bucket, Key=out_key, Body=notes.encode(), ContentType="text/plain")
-            print(f"  REJECTED (failed SHACL validation) -> {out_key}")
+        if nt_content is not None:
+            out_key = f"{VALIDATED_PREFIX}{base}.nt"
+            client.put_object(Bucket=bucket, Key=out_key, Body=nt_content.encode(), ContentType="application/n-triples")
+            print(f"  VALIDATED -> {out_key}")
         else:
-            out_key = f"{VALIDATED_PREFIX}{base}.ttl"
-            client.put_object(
-                Bucket=bucket, Key=out_key,
-                Body=graph.serialize(format="turtle").encode(),
-                ContentType="text/turtle",
-            )
-            print(f"  VALIDATED ({len(graph)} triples) -> {out_key}")
-            if "NOTE:" in notes:
-                print("  " + notes.split("\n\n")[0])
+            print("  ALL batches failed validation -- nothing written to validated/.")
+
+        if "NOTE:" in notes:
+            report_key = f"{REJECTED_PREFIX}{base}.notes.txt"
+            client.put_object(Bucket=bucket, Key=report_key, Body=notes.encode(), ContentType="text/plain")
+            print(f"  Notes (uncurated fields / rejected batches) -> {report_key}")
 
         processed.add(key)
+        # Save the manifest after EVERY file, not just at the end -- so a
+        # later failure (or a cancelled run) doesn't forget files that
+        # already succeeded and force a wasteful full re-run.
+        save_manifest(client, bucket, processed)
 
-    save_manifest(client, bucket, processed)
-    print("Manifest updated. Next run will skip everything already processed here.")
+    print("Done. Manifest updated -- next run will skip everything already processed here.")
 
 
 def run_local():
-    """Test mode: reads ./sample_landing/*.json, writes ./validated_output/*.ttl. No R2 needed."""
+    """Test mode: reads ./sample_landing/*.json, writes ./validated_output/*.nt. No R2 needed."""
     here = os.path.dirname(os.path.abspath(__file__))
     in_dir = os.path.join(here, "sample_landing")
     out_dir = os.path.join(here, "validated_output")
@@ -148,17 +204,17 @@ def run_local():
             payload = json.load(f)
 
         print(f"Processing {fname} ...")
-        graph, notes = process_payload(payload, fname)
+        nt_content, notes = process_payload(payload, fname)
 
-        if graph is None:
-            print("  REJECTED (failed SHACL validation):")
-            print(notes)
+        if nt_content is not None:
+            out_path = os.path.join(out_dir, fname.replace(".json", ".nt"))
+            with open(out_path, "w", encoding="utf-8") as out:
+                out.write(nt_content)
+            print(f"  VALIDATED -> {out_path}")
         else:
-            out_path = os.path.join(out_dir, fname.replace(".json", ".ttl"))
-            graph.serialize(destination=out_path, format="turtle")
-            print(f"  VALIDATED ({len(graph)} triples) -> {out_path}")
-            if "NOTE:" in notes:
-                print("  " + notes.split("\n\n")[0])
+            print("  ALL batches failed validation -- nothing written.")
+
+        print("  " + notes.split("\n\n")[0])
 
 
 if __name__ == "__main__":
