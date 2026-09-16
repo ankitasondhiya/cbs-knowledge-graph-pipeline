@@ -7,7 +7,16 @@ on:
   workflow_run:
     workflows: ["CBS transform worker"]
     types: [completed]
-  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, any time
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "poc = load only the *.poc.nt files (matches transform's --scope poc). Leave blank for the full, unscoped load."
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - poc
 
 permissions:
   contents: read
@@ -17,7 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only proceed if this was triggered manually, or the transform run it's
     # reacting to actually succeeded -- no point loading after a
-    # failed/partial transform.
+    # failed/partial transform. The automatic path (workflow_run) always
+    # loads the full, unscoped dataset -- --scope poc is only ever a
+    # deliberate manual choice, same as transform.yml.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -40,4 +51,9 @@ jobs:
           NEO4J_URI: ${{ secrets.NEO4J_URI }}
           NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
-        run: python load/run_load.py
+        run: |
+          if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
+            python load/run_load.py --scope poc
+          else
+            python load/run_load.py
+          fi

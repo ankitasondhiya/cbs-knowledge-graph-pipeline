@@ -7,7 +7,16 @@ on:
   workflow_run:
     workflows: ["CBS extraction worker"]
     types: [completed]
-  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab, any time
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "poc = narrow the largest tables to fit Neo4j Free (see transform/scope_filters.py). Leave blank for the full, unscoped run."
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - poc
 
 permissions:
   contents: read
@@ -17,7 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only proceed if this was triggered manually, or the fetch run it's
     # reacting to actually succeeded -- no point transforming after a
-    # failed/partial fetch.
+    # failed/partial fetch. The scheduled/automatic path (workflow_run)
+    # never sets `scope`, so it always produces the full, unscoped
+    # dataset -- --scope poc is only ever a deliberate manual choice.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -37,4 +48,9 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python transform/run_transform.py
+        run: |
+          if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
+            python transform/run_transform.py --scope poc
+          else
+            python transform/run_transform.py
+          fi
