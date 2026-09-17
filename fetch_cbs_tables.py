@@ -56,6 +56,37 @@ TABLES = {
     "81578NED": "Vestigingen van bedrijven; bedrijfstak, regio (business establishments by sector & region)",
     "83631NED": "Vestigingen van bedrijven; oprichtingen, bedrijfstak, regio (regional business openings)",
     "83635NED": "Vestigingen van bedrijven; opheffingen, bedrijfstak, regio (regional business closures)",
+    # SBI 2025 -- CBS's new industry classification, replacing SBI 2008.
+    # Added ALONGSIDE the SBI 2008 tables above (not replacing them): CBS
+    # itself is still mid-transition, and the transform stage already
+    # recognizes both schemes' branch field and merges matching top-level
+    # industry labels onto the same graph nodes (see glossary.py).
+    "86280NED": "Bedrijven; bedrijfstak (SBI 2025) (business counts by industry -- SBI 2025 successor to 81589NED)",
+    "86281NED": "Bedrijven; bedrijfsgrootte en rechtsvorm (SBI 2025) (size & legal form -- SBI 2025 successor to 81588NED)",
+    "86282NED": "Bedrijven; opheffingen, bedrijfsgrootte, rechtsvorm, bedrijfstak (SBI 2025) (business closures -- SBI 2025 successor to 83149NED)",
+    # Bankruptcies -- a more standard, legally-defined "business distress"
+    # signal than opheffingen (closures), which includes voluntary exits too.
+    "82242NED": "Faillissementen; kerncijfers (bankruptcies -- headline figures)",
+    "82522NED": "Faillissementen; bedrijven en instellingen, regio (bankruptcies by region)",
+    "82244NED": "Faillissementen; bedrijven en instellingen, SBI 2008 (bankruptcies by industry sector)",
+    # Business cycle survey (Conjunctuurenquête) -- forward-looking sentiment,
+    # not just historical counts.
+    "85610NED": "Conjunctuurenquête Nederland; regio (business cycle survey by region)",
+    "85609NED": "Conjunctuurenquête Nederland; bedrijfstakken (SBI 2008) (business cycle survey by industry)",
+    "85611NED": "Conjunctuurenquête Nederland; bedrijfsgrootte, bedrijfstakken (SBI 2008) (business cycle survey by size & industry)",
+    # Entrepreneur confidence -- a leading indicator, distinct from the
+    # historical/structural tables above.
+    "85612NED": "Ondernemersvertrouwen; bedrijfstakken (SBI 2008) (entrepreneur confidence by industry)",
+    "85614NED": "Ondernemersvertrouwen; regio (entrepreneur confidence by region)",
+    # Financial performance by region & size -- not represented anywhere
+    # else in this table set.
+    "86413NED": "Bedrijfsleven; financiële gegevens, regio, bedrijfsgrootte (business financial data by region & size)",
+    # Foreign-owned businesses in NL -- an internationalization angle
+    # distinct from the trade tables above.
+    "85821NED": "Buitenlandse zeggenschap bedrijven in Nederland; kerncijfers, bedrijfstak (foreign-controlled businesses in NL, by industry)",
+    # Producer/industry sentiment -- narrower than Conjunctuurenquête,
+    # industry-only.
+    "81234ned": "Producentenvertrouwen; stemmingsindicator van de industrie, bedrijfstak (producer confidence, by industry)",
 }
 
 LANDING_ZONE = "./landing_zone"

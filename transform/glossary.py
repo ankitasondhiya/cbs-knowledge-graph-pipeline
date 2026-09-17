@@ -45,6 +45,20 @@ DIMENSION_FIELDS = {
     "IndelingswijzigingGemeenteWijkBuurt_4": {"short_name": "boundary_change_flag", "skip": True},
     "IndelingswijzigingWijkenEnBuurten_4": {"short_name": "boundary_change_flag", "skip": True},
     "BedrijfstakkenBranchesSBI2008": {"short_name": "branch", "class": "Branch", "predicate": "branch"},
+    # SBI 2025 replaces SBI 2008 as CBS's industry classification, and new
+    # tables (86280NED, 86281NED, 86282NED, ...) use this field name
+    # instead. Deliberately mapped to the SAME short_name/class/predicate
+    # as SBI 2008 -- CBS's top-level section labels ("A Landbouw, bosbouw
+    # en visserij", "G Handel", ...) are textually identical between the
+    # two schemes (confirmed against CBS's real SBI2025 code list), and
+    # dimension_value_uri() derives node URIs from that label text. So an
+    # SBI2025 table and an SBI2008 table both referencing "G Handel" land
+    # on the exact same Branch node -- old and new tables interlink
+    # automatically rather than becoming two disconnected taxonomies.
+    # Below the top level, SBI2025 does reorganize some finer-grained
+    # codes -- not a concern here since --scope poc only keeps top-level
+    # sections anyway (see scope_filters.py).
+    "BedrijfstakkenBranchesSBI2025": {"short_name": "branch", "class": "Branch", "predicate": "branch"},
     "RegioS": {"short_name": "regio_category", "class": "RegioCategory", "predicate": "regioCategory"},
     # IMPORTANT: RegioS is NOT the same thing as WijkenEnBuurten. On the
     # business tables it's a national/foreign/unclassified breakdown
@@ -54,6 +68,15 @@ DIMENSION_FIELDS = {
     "Diensten": {"short_name": "service_category", "class": "ServiceCategory", "predicate": "serviceCategory"},
     "Landen": {"short_name": "country", "class": "Country", "predicate": "country"},
     "InEnUitvoer": {"short_name": "trade_direction", "class": "TradeDirection", "predicate": "tradeDirection"},
+    # New dimension fields seen on the bankruptcy/survey tables added for
+    # the broader B2B set. Skipped (not modeled as their own node type)
+    # rather than guessed at -- they're secondary breakdowns, not central
+    # to the industry/region story these tables are being added for, and
+    # can be promoted to real dimension nodes later if they turn out to
+    # matter once real data is in.
+    "TypeGefailleerde": {"short_name": "bankruptcy_party_type", "skip": True},  # 82242NED/82522NED/82244NED: company vs. sole proprietor etc.
+    "Marges": {"short_name": "margin_type", "skip": True},  # survey tables (Conjunctuurenquête, Ondernemersvertrouwen, Producentenvertrouwen): seasonally-adjusted margin variant
+    "Seizoencorrectie": {"short_name": "seasonal_adjustment", "skip": True},  # same survey tables: raw vs. seasonally-corrected series
 }
 
 GLOSSARY = {
