@@ -65,6 +65,10 @@ jobs:
           NEO4J_URI: ${{ secrets.NEO4J_URI }}
           NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          # Same fix as transform.yml -- without this, print() progress
+          # lines can sit buffered for minutes on a large table, looking
+          # identical to "stuck" in the Actions log.
+          PYTHONUNBUFFERED: "1"
         run: |
           ARGS=""
           if [ "${{ github.event.inputs.scope }}" = "poc" ]; then

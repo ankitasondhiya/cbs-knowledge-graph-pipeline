@@ -48,6 +48,13 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          # Forces Python's stdout to flush every line instead of block-
+          # buffering it (the default once stdout isn't a real terminal,
+          # which is exactly what a CI log is). Without this, print()
+          # progress lines can sit in an internal buffer for minutes on a
+          # large table -- looking identical to "stuck" in the Actions log
+          # even though the script is working fine underneath.
+          PYTHONUNBUFFERED: "1"
         run: |
           if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
             python transform/run_transform.py --scope poc
