@@ -59,8 +59,14 @@ exo:RegionShape
         sh:path exo:regionCode ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
-        sh:pattern "^(GM|WK|BU)[0-9]{4,8}$" ;
-        sh:message "Region code must be a valid CBS code (GM/WK/BU + digits)." ;
+        # NL + digits covers the national "Nederland" total row that CBS
+        # includes alongside every Gemeente/Wijk/Buurt breakdown (e.g.
+        # "NL00") -- confirmed against 86165NED's real DataProperties, not
+        # guessed. Without it, every batch containing that totals row
+        # failed validation entirely, since it appears in nearly every
+        # batch of real data.
+        sh:pattern "^(NL|GM|WK|BU)[0-9]{2,8}$" ;
+        sh:message "Region code must be a valid CBS code (NL/GM/WK/BU + digits)." ;
     ] .
 
 exo:ConceptShape
