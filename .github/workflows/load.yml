@@ -26,6 +26,11 @@ on:
         required: false
         default: false
         type: boolean
+      force:
+        description: "true = ignore the processed-files manifest and reprocess files even if already marked loaded. Needed after wiping the Neo4j database by hand, or to get full --dry-run stats regardless of load history."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -70,5 +75,8 @@ jobs:
           fi
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
           fi
           python load/run_load.py $ARGS

@@ -130,23 +130,33 @@ recreate the free instance from the Aura console, which is faster).
 Never guess this — table row/measure counts vary wildly (see
 `transform/scope_filters.py`'s notes on `85609NED`'s 145 measure columns).
 Run a dry run against every scoped file and read the `rel_ops` in each
-file's printed stats:
+file's printed stats. **Use `--force`** here — any file a previous run
+already loaded successfully (before later hitting the cap) is marked
+"processed" in the manifest and would otherwise be skipped, even though
+`--dry-run` never touches the manifest or Neo4j:
 
 ```bash
-python run_load.py --dry-run --scope poc
+python run_load.py --dry-run --scope poc --force
 # or via GitHub Actions: workflow_dispatch with scope=poc, dry_run=true,
-# tables left blank -- then read the per-file stats in the job log.
+# force=true, tables left blank -- then read the per-file stats in the job log.
 ```
 
 **3. Pick tables whose combined `rel_ops` stays comfortably under 400k**
 (leave headroom — Aura Free also caps nodes at 200k, and constraints/labels
-add overhead), then load only those:
+add overhead), then load only those. **Also use `--force` for this real
+load**, since the manifest still thinks the previously-loaded files are
+done even though the database was just wiped in step 1:
 
 ```bash
-python run_load.py --scope poc --tables 81578NED,84765NED,82242NED,...
+python run_load.py --scope poc --tables 81578NED,84765NED,82242NED,... --force
 # or via GitHub Actions: workflow_dispatch with scope=poc,
-# tables=<comma-separated list>, dry_run=false
+# tables=<comma-separated list>, dry_run=false, force=true
 ```
+
+`--force` doesn't skip the manifest bookkeeping going forward -- it only
+ignores it for deciding what to (re)process this run. Every file loaded
+this way is still recorded in the manifest afterward as normal, so a
+later plain (non-`--force`) run picks up correctly from there.
 
 The other tables stay fully landed and validated in R2 (`landing_zone/`,
 `validated/`) — they're just not loaded into this particular Neo4j

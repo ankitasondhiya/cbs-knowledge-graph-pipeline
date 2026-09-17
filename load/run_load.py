@@ -348,7 +348,7 @@ def save_manifest(client, bucket, processed_keys: set, manifest_key: str = LOAD_
     client.put_object(Bucket=bucket, Key=manifest_key, Body=body, ContentType="application/json")
 
 
-def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None):
+def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None, force: bool = False):
     client, bucket = get_r2_client()
     manifest_key = "load/_processed_manifest_poc.json" if scope == "poc" else LOAD_MANIFEST_KEY
     processed = load_manifest(client, bucket, manifest_key)
@@ -364,7 +364,12 @@ def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None):
         o["Key"] for o in resp.get("Contents", [])
         if o["Key"].endswith(suffix)
         and (scope == "poc" or not o["Key"].endswith(".poc.nt"))
-        and o["Key"] not in processed
+        # --force skips the "already processed" check entirely -- needed
+        # after wiping the Neo4j database by hand (the manifest still
+        # thinks those files were loaded, but the graph they were loaded
+        # into no longer exists), and useful for --dry-run any time you
+        # want real stats on files that are technically already loaded.
+        and (force or o["Key"] not in processed)
     ]
     if tables:
         # Filter by table ID -- the filename is always "<table_id>_<timestamp>.nt",
@@ -443,10 +448,18 @@ if __name__ == "__main__":
              "*.nt files. Uses its own manifest, so a poc load and a full load never "
              "interfere with each other.",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Ignore the processed-files manifest -- reprocesses files even if they're "
+             "already marked loaded. Use this after wiping the Neo4j database by hand "
+             "(the manifest doesn't know the graph is now empty), or with --dry-run to "
+             "see real per-table stats regardless of load history. Ignored with --local "
+             "(no manifest there).",
+    )
     args = parser.parse_args()
     tables = set(t.strip() for t in args.tables.split(",")) if args.tables else None
 
     if args.local:
         run_local(args.dry_run, tables, args.scope)
     else:
-        run_r2(args.dry_run, tables, args.scope)
+        run_r2(args.dry_run, tables, args.scope, args.force)
