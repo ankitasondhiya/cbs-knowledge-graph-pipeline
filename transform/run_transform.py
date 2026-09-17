@@ -173,13 +173,24 @@ def _out_suffix(scope: str | None) -> str:
     return ".poc.nt" if scope == "poc" else ".nt"
 
 
-def run_r2(scope: str | None = None):
+def run_r2(scope: str | None = None, force: bool = False):
     client, bucket = get_r2_client()
     manifest_key = _manifest_key(scope)
     processed = load_manifest(client, bucket, manifest_key)
 
     resp = client.list_objects_v2(Bucket=bucket, Prefix=RAW_PREFIX)
-    keys = [o["Key"] for o in resp.get("Contents", []) if o["Key"] not in processed and o["Key"].endswith(".json")]
+    keys = [
+        o["Key"] for o in resp.get("Contents", [])
+        if o["Key"].endswith(".json")
+        # --force skips the "already processed" check. Needed because a
+        # raw file gets marked processed here even when it produced NO
+        # validated output (e.g. every batch failed SHACL) -- otherwise a
+        # fix to rdf_mapper.py/shacl_shapes.ttl would have no new raw file
+        # to re-run against, and "No new raw files to transform" would
+        # print forever even though the fix was never actually applied to
+        # that table's data.
+        and (force or o["Key"] not in processed)
+    ]
 
     if not keys:
         print("No new raw files to transform. Landing zone is fully processed.")
@@ -253,9 +264,17 @@ if __name__ == "__main__":
              "(see scope_filters.py) so the result fits AuraDB Free's node cap. "
              "Omit for the full, unscoped dataset (the default).",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Ignore the processed-files manifest -- reprocesses raw files even if "
+             "already marked done. Use this after fixing rdf_mapper.py/shacl_shapes.ttl "
+             "and re-running against a table that previously produced nothing (a raw "
+             "file is marked processed here even when validation rejected every batch). "
+             "Ignored with --local (no manifest there).",
+    )
     args = parser.parse_args()
 
     if args.local:
         run_local(args.scope)
     else:
-        run_r2(args.scope)
+        run_r2(args.scope, args.force)

@@ -17,6 +17,11 @@ on:
         options:
           - ""
           - poc
+      force:
+        description: "true = ignore the processed-files manifest and reprocess raw files even if already marked done. Needed after fixing rdf_mapper.py/shacl_shapes.ttl and re-running against a table that previously produced nothing."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -56,8 +61,11 @@ jobs:
           # even though the script is working fine underneath.
           PYTHONUNBUFFERED: "1"
         run: |
+          ARGS=""
           if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
-            python transform/run_transform.py --scope poc
-          else
-            python transform/run_transform.py
+            ARGS="$ARGS --scope poc"
           fi
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          python transform/run_transform.py $ARGS
