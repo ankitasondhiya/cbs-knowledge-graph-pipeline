@@ -182,8 +182,18 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 continue
 
             if field == "WijkenEnBuurten":
-                gemeente_name = row.get("Gemeentenaam_1")
-                region_node = add_region(g, value, gemeente_name)
+                # WijkenEnBuurten is the DISPLAY NAME field (CBS titles it
+                # "Wijken en buurten") -- it holds this row's own name at
+                # whatever level the row is (gemeente, wijk, or buurt name),
+                # e.g. "Noordkil Kwartier". The actual GM/WK/BU code lives in
+                # Codering_3, which is otherwise skip:True in glossary.py.
+                # A hand-built sample fixture set both fields to the same
+                # "GM0363" value, which masked this on smaller test runs --
+                # on real data they're different, and add_region's code
+                # argument needs the real code to derive parentage correctly.
+                code = row.get("Codering_3")
+                if code:
+                    region_node = add_region(g, code, value)
             elif info.get("literal"):
                 period_literal = value.strip() if isinstance(value, str) else value
             elif not info.get("skip"):
