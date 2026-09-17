@@ -186,6 +186,77 @@ GLOSSARY = {
         "definition_en": "Net balance (exports minus imports) of services trade, in million euros.",
         "unit": "million-eur", "topic": "trade", "verified": True,
     },
+
+    # ---- 82244NED: Faillissementen; bedrijven en instellingen, SBI 2008 ----
+    # Highest-usage single uncurated field across the whole graph (1,116
+    # Observations) -- verified against CBS's real DataProperties for
+    # 82244NED, not guessed.
+    ("82244NED", "UitgesprokenFaillissementen_1"): {
+        "slug": "bankruptcies-declared", "label_en": "Bankruptcies declared", "label_nl": "Uitgesproken faillissementen",
+        "definition_en": "Number of sole proprietorships, businesses, and institutions declared bankrupt by court order in the period.",
+        "unit": "count", "topic": "business-dynamics", "verified": True,
+    },
+
+    # ---- 85821NED: Buitenlandse zeggenschap bedrijven in Nederland ----
+    # By far the biggest cluster of uncurated measures (10 fields, ~34,000
+    # Observations combined) -- all 10 verified against CBS's real
+    # DataProperties for 85821NED before writing labels/units, following
+    # the same rule as everywhere else in this file: never guess.
+    ("85821NED", "AantalBedrijven_1"): {
+        "slug": "foreign-controlled-business-count", "label_en": "Number of businesses (foreign-controlled)", "label_nl": "Aantal bedrijven",
+        "definition_en": "Count of foreign-controlled businesses in the business register for this industry.",
+        "unit": "business", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "Omzet_2"): {
+        "slug": "foreign-controlled-turnover", "label_en": "Turnover (foreign-controlled businesses)", "label_nl": "Omzet",
+        "definition_en": "Turnover of foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "Productiewaarde_3"): {
+        "slug": "foreign-controlled-production-value", "label_en": "Production value (foreign-controlled businesses)", "label_nl": "Productiewaarde",
+        "definition_en": "Value of goods and services actually produced, based on sales, for foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "ToegevoegdeWaardeTegenFactorkosten_4"): {
+        "slug": "foreign-controlled-value-added", "label_en": "Value added at factor cost (foreign-controlled businesses)", "label_nl": "Toegevoegde waarde tegen factorkosten",
+        "definition_en": "Gross income from business activity after correcting for subsidies and indirect taxes, for foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "TotaleAankoopVanGoederenEnDiensten_5"): {
+        "slug": "foreign-controlled-total-purchases", "label_en": "Total purchases of goods & services (foreign-controlled businesses)", "label_nl": "Totale aankoop van goederen en diensten",
+        "definition_en": "Total value of all goods and services purchased during the reporting period by foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "AankoopVanGoederenEnDiensten_6"): {
+        "slug": "foreign-controlled-resale-purchases", "label_en": "Purchases for resale (foreign-controlled businesses)", "label_nl": "Aankoop van goederen en diensten, ingekocht voor wederverkoop",
+        "definition_en": "Value of goods and services purchased for resale in their original state (not further processed), by foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "BrutoInvesteringenInMateriele_8"): {
+        "slug": "foreign-controlled-gross-investment", "label_en": "Gross investment in tangible goods (foreign-controlled businesses)", "label_nl": "Bruto-investeringen in materiële goederen",
+        "definition_en": "Investment in all tangible goods during the reference period by foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "Personeelskosten_7"): {
+        "slug": "foreign-controlled-staff-costs", "label_en": "Staff costs (foreign-controlled businesses)", "label_nl": "Personeelskosten",
+        "definition_en": "Total remuneration, in cash or in kind, paid by the employer to employees for work done, for foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "AantalWerkzamePersonen_9"): {
+        "slug": "foreign-controlled-employment", "label_en": "Number of persons employed (foreign-controlled businesses)", "label_nl": "Aantal werkzame personen",
+        "definition_en": "Total number of persons working at foreign-controlled businesses (employees and self-employed), in thousands.",
+        "unit": "thousand-persons", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "TotaleOOUitgavenBinnenshuis_10"): {
+        "slug": "foreign-controlled-rd-expenditure", "label_en": "In-house R&D expenditure (foreign-controlled businesses)", "label_nl": "Totale O&O-uitgaven binnenshuis",
+        "definition_en": "Total in-house expenditure on research and experimental development (creative, systematic work to increase knowledge) by foreign-controlled businesses, in million euros.",
+        "unit": "million-eur", "topic": "internationalization", "verified": True,
+    },
+    ("85821NED", "TotaalAantalOOWerknemers_11"): {
+        "slug": "foreign-controlled-rd-staff", "label_en": "R&D staff (foreign-controlled businesses)", "label_nl": "Totaal aantal O&O-werknemers",
+        "definition_en": "Total number of staff engaged in research and experimental development at foreign-controlled businesses, in thousands.",
+        "unit": "thousand-persons", "topic": "internationalization", "verified": True,
+    },
 }
 
 
