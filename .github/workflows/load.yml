@@ -17,6 +17,15 @@ on:
         options:
           - ""
           - poc
+      tables:
+        description: "Optional: comma-separated CBS table IDs to load (e.g. 81578NED,84765NED,82242NED). Leave blank to load every table that has new validated data. Use this to curate a subset that fits Neo4j Aura Free's 400k relationship cap."
+        required: false
+        default: ""
+      dry_run:
+        description: "true = parse + print stats only, write NOTHING to Neo4j. Use this first to see real relationship counts per table before committing to a --tables list."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -52,8 +61,14 @@ jobs:
           NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
         run: |
+          ARGS=""
           if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
-            python load/run_load.py --scope poc
-          else
-            python load/run_load.py
+            ARGS="$ARGS --scope poc"
           fi
+          if [ -n "${{ github.event.inputs.tables }}" ]; then
+            ARGS="$ARGS --tables ${{ github.event.inputs.tables }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python load/run_load.py $ARGS

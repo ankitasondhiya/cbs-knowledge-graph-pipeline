@@ -104,6 +104,56 @@ RETURN path
 MATCH (c:Concept {verified: false}) RETURN c.labelEn, c.topic LIMIT 25
 ```
 
+## Fitting a curated subset into Aura Free (400k relationship cap)
+
+With 27 CBS tables landing, even `--scope poc` on every table will not fit
+in Aura Free's hard 400,000-relationship ceiling — this was hit for real
+(`Neo.ClientError.Transaction.TransactionHookFailed ... exceeded the
+logical size limit of 400000 relationships`). Because each 5,000-triple
+batch commits as its own transaction, a failed run like that still leaves
+everything that succeeded *before* the failing batch permanently written —
+the database needs a clean wipe before a curated re-load means anything.
+
+**1. Wipe the database** (Aura console -> Query tab, or Neo4j Browser):
+
+```cypher
+MATCH (n) DETACH DELETE n
+```
+
+For a large graph this itself may need to run in batches
+(`CALL apoc.periodic.iterate(...)`) if APOC is available on your Aura tier,
+or just repeat the plain `DETACH DELETE` call a few times — Aura Free
+has no APOC, so on Free, run the plain command repeatedly (or drop and
+recreate the free instance from the Aura console, which is faster).
+
+**2. Get real per-table relationship counts before choosing a subset.**
+Never guess this — table row/measure counts vary wildly (see
+`transform/scope_filters.py`'s notes on `85609NED`'s 145 measure columns).
+Run a dry run against every scoped file and read the `rel_ops` in each
+file's printed stats:
+
+```bash
+python run_load.py --dry-run --scope poc
+# or via GitHub Actions: workflow_dispatch with scope=poc, dry_run=true,
+# tables left blank -- then read the per-file stats in the job log.
+```
+
+**3. Pick tables whose combined `rel_ops` stays comfortably under 400k**
+(leave headroom — Aura Free also caps nodes at 200k, and constraints/labels
+add overhead), then load only those:
+
+```bash
+python run_load.py --scope poc --tables 81578NED,84765NED,82242NED,...
+# or via GitHub Actions: workflow_dispatch with scope=poc,
+# tables=<comma-separated list>, dry_run=false
+```
+
+The other tables stay fully landed and validated in R2 (`landing_zone/`,
+`validated/`) — they're just not loaded into this particular Neo4j
+instance. Nothing about fetch or transform changes; this is purely a
+load-stage decision, and it's revisable any time (a paid Aura tier removes
+the cap entirely, or a different `--tables` list can be loaded next).
+
 ## Set up as a GitHub Actions job
 
 Add `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` as repo secrets
