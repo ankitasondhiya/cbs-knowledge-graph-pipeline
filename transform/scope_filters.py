@@ -107,7 +107,35 @@ SCOPE_TABLES = {
     # NOT listed -- their real volume is small enough not to need it.
     "85609NED": _keep_top_level_branch,
     "85611NED": _keep_top_level_branch,
+    # 86165NED (neighbourhood demographics): confirmed against real CBS
+    # DataProperties -- 59 measure columns, 18,495 rows spanning national
+    # (NL00) / municipality (GM...) / district (WK...) / neighbourhood
+    # (BU...) levels. Loaded in full that's ~18,495 x 59 x 3 relationships
+    # (dataset + variable + region links) -- roughly 3.2 million,
+    # nowhere close to fitting Free tier even with headroom to spare on
+    # every other table. Keeps every municipality + the national total
+    # (a genuine nationwide comparison, ~343 rows) plus the full
+    # Buurt -> Wijk -> Gemeente breakdown for one flagship city, so the
+    # region-hierarchy demo query in load/README.md still has real data
+    # to show rather than dropping neighbourhood granularity entirely.
+    "86165NED": lambda row: _keep_demographics_subset(row),
 }
+
+FLAGSHIP_GEMEENTE_CODES = {"0363"}  # Amsterdam -- extend this set to add more cities' full neighbourhood hierarchy, watching the relationship budget as you go
+
+
+def _keep_demographics_subset(row: dict) -> bool:
+    code = row.get("Codering_3")
+    if not code:
+        return False
+    if code.startswith("NL") or code.startswith("GM"):
+        return True  # every municipality + the national total
+    if code.startswith("WK") or code.startswith("BU"):
+        # WK/BU codes embed their gemeente's code right after the prefix
+        # (see rdf_mapper.py's region_type_and_parent) -- only keep
+        # district/neighbourhood rows belonging to a flagship city.
+        return code[2:6] in FLAGSHIP_GEMEENTE_CODES
+    return False
 
 
 def apply_scope(rows: list, table_id: str, scope: str | None) -> list:
