@@ -32,6 +32,14 @@ and what each one is for):
     AZURE_STORAGE_CONNECTION_STRING
     AZURE_STORAGE_CONTAINER
 
+Only processes raw files for tables in IMPORTANT_TABLES below (see that
+constant's comment for what's on it and why). fetch_cbs_tables.py now
+lands the ENTIRE CBS catalog into landing_zone/ (~1,250+ tables), but
+transform stays scoped to the curated business/B2B set plus the tables
+added to close real gaps found in the KPI gap analysis -- everything
+else lands in Azure Blob raw storage and just sits there, untouched,
+until it's deliberately added to the allowlist.
+
 Usage:
     python run_transform.py                 # process new files from Azure Blob
     python run_transform.py --local         # test against sample_landing/, no Azure/credentials needed
@@ -57,6 +65,63 @@ REJECTED_PREFIX = "rejected/"
 MANIFEST_KEY = "validated/_processed_manifest.json"
 
 BATCH_SIZE = 2000  # rows per batch -- keeps memory bounded and progress visible on large tables
+
+# Tables allowed through to Transform & Validate right now. fetch_cbs_tables.py
+# lands the FULL CBS catalog into landing_zone/, but this stage stays scoped --
+# only these tables ever get RDF-mapped, validated, and made ready for
+# load/run_load.py to push into Neo4j. Everything else stays parked in Azure
+# Blob raw storage untouched until someone deliberately adds it here.
+#
+# This is the original curated business/enterprise + neighbourhood-
+# demographics set, plus 4 tables added to close real gaps identified
+# against the business's KPI requirements (see the KPI Data Gap Analysis
+# doc for the full reasoning behind each one):
+#   86119NED - ICT-gebruik bij bedrijven                         (KPI 2: Digital Foundation Gap, KPI 3: AI Depth Ratio)
+#   80567NED - Vacatures; vacaturegraad naar SBI 2008              (KPI 5: Labour Scarcity Pressure)
+#   84466NED - Zelfstandigen; inkomen, vermogen, kenmerken         (KPI 4: Succession Pressure Index)
+#   48051NED - Bedrijven; bedrijfstak, groeicategorie, leeftijd    (KPI 4: Succession Pressure Index)
+IMPORTANT_TABLES = {
+    # -- original curated business/enterprise + neighbourhood demographics set --
+    "86165NED",  # Kerncijfers wijken en buurten (neighbourhood demographics)
+    "81589NED",  # Bedrijven; bedrijfstak (business counts by industry)
+    "81588NED",  # Bedrijven; bedrijfsgrootte en rechtsvorm (size & legal form)
+    "83148NED",  # Bedrijven; oprichtingen (business starts)
+    "83149NED",  # Bedrijven; opheffingen (business closures)
+    "83147NED",  # Bedrijven; fusies en overnames (mergers & acquisitions)
+    "83827NED",  # Groothandelsbedrijven; omzet (wholesale turnover)
+    "85828NED",  # Handel en diensten; omzet en productie
+    "85958NED",  # Internationale handel in goederen
+    "84765NED",  # Internationale handel in diensten, naar land
+    "81578NED",  # Bedrijfsvestigingen naar sector en regio
+    "83631NED",  # Regional business openings
+    "83635NED",  # Regional business closures
+    "86280NED",  # SBI 2025 successor to 81589NED
+    "86281NED",  # SBI 2025 successor to 81588NED
+    "86282NED",  # SBI 2025 successor to 83149NED
+    "82242NED",  # Faillissementen; kerncijfers
+    "82522NED",  # Faillissementen; regio
+    "82244NED",  # Faillissementen; SBI 2008
+    "85610NED",  # Conjunctuurenquete; regio
+    "85609NED",  # Conjunctuurenquete; bedrijfstakken
+    "85611NED",  # Conjunctuurenquete; bedrijfsgrootte + bedrijfstakken
+    "85612NED",  # Ondernemersvertrouwen; bedrijfstakken
+    "85614NED",  # Ondernemersvertrouwen; regio
+    "86413NED",  # Bedrijfsleven; financiele gegevens
+    "85821NED",  # Buitenlandse zeggenschap bedrijven in Nederland
+    "81234ned",  # Producentenvertrouwen
+    # -- added to close KPI gap-analysis findings --
+    "86119NED",
+    "80567NED",
+    "84466NED",
+    "48051NED",
+}
+
+
+def _table_id_from_key(key: str) -> str:
+    # Raw filenames are always "<table_id>_<timestamp>.json" (see
+    # fetch_cbs_tables.py) -- table IDs never contain an underscore, so a
+    # plain split on the basename is safe.
+    return os.path.basename(key).split("_")[0]
 
 
 def get_blob_container():
@@ -174,7 +239,7 @@ def run_azure(scope: str | None = None, force: bool = False):
     manifest_key = _manifest_key(scope)
     processed = load_manifest(container, manifest_key)
 
-    keys = [
+    all_new_keys = [
         b.name for b in container.list_blobs(name_starts_with=RAW_PREFIX)
         if b.name.endswith(".json")
         # --force skips the "already processed" check. Needed because a
@@ -186,9 +251,14 @@ def run_azure(scope: str | None = None, force: bool = False):
         # that table's data.
         and (force or b.name not in processed)
     ]
+    keys = [k for k in all_new_keys if _table_id_from_key(k) in IMPORTANT_TABLES]
+    skipped_out_of_scope = len(all_new_keys) - len(keys)
+    if skipped_out_of_scope:
+        print(f"Skipping {skipped_out_of_scope} raw file(s) for tables outside IMPORTANT_TABLES "
+              f"(landed by fetch_cbs_tables.py's full-catalog pull, not scoped for transform).")
 
     if not keys:
-        print("No new raw files to transform. Landing zone is fully processed.")
+        print("No new raw files to transform (within IMPORTANT_TABLES). Landing zone is fully processed for the scoped set.")
         return
 
     label = f" (scope={scope})" if scope else ""
@@ -234,9 +304,9 @@ def run_local(scope: str | None = None):
     out_dir = os.path.join(here, "validated_output")
     os.makedirs(out_dir, exist_ok=True)
 
-    files = [f for f in os.listdir(in_dir) if f.endswith(".json")]
+    files = [f for f in os.listdir(in_dir) if f.endswith(".json") and _table_id_from_key(f) in IMPORTANT_TABLES]
     label = f" (scope={scope})" if scope else ""
-    print(f"Found {len(files)} local sample file(s){label}.")
+    print(f"Found {len(files)} local sample file(s){label} within IMPORTANT_TABLES.")
     for fname in files:
         with open(os.path.join(in_dir, fname)) as f:
             payload = json.load(f)
