@@ -1,6 +1,6 @@
 # Transform & Validate — Stage 2
 
-Turns raw CBS rows (landed in R2 by `fetch_cbs_tables.py`) into validated
+Turns raw CBS rows (landed in Azure Blob Storage by `fetch_cbs_tables.py`) into validated
 RDF, ready for the Incremental Load Controller (stage 3). Generalized to
 handle all 13 tables in the pipeline, not just one — each table's own
 dimension structure (region, industry branch, country, period...) is
@@ -25,7 +25,7 @@ out, since it's one pipeline with one deployment lifecycle:
 cbs-knowledge-graph-pipeline/
   fetch_cbs_tables.py        # stage 1 (unchanged)
   pipeline_state.json
-  landing_zone/              # stage 1 output, gitignored (lives in R2)
+  landing_zone/              # stage 1 output, gitignored (lives in Azure Blob Storage)
   transform/                 # <- this folder (stage 2)
     glossary.py
     rdf_mapper.py
@@ -44,24 +44,22 @@ cbs-knowledge-graph-pipeline/
 pip install -r transform/requirements.txt
 cd transform
 
-# Test locally first -- no R2 credentials needed, no cbs.nl network needed.
+# Test locally first -- no Azure credentials needed, no cbs.nl network needed.
 # sample_landing/ has 3 REAL landed files (85958NED, 81588NED, 83827NED) plus
 # one synthetic 86165NED fixture (clearly marked -- real values not pulled yet
 # for Amsterdam specifically since this dev environment can't reach cbs.nl):
 python run_transform.py --local
 
-# Against your real R2 bucket -- reuses the exact same env vars
+# Against your real Azure Blob container -- reuses the exact same env vars
 # fetch_cbs_tables.py / your GitHub Actions workflow already use:
-export R2_ACCOUNT_ID=...
-export R2_ACCESS_KEY_ID=...
-export R2_SECRET_ACCESS_KEY=...
-export R2_BUCKET_NAME=...
+export AZURE_STORAGE_CONNECTION_STRING=...   # from your storage account's "Access keys" page
+export AZURE_STORAGE_CONTAINER=...
 python run_transform.py
 
 # --scope poc: same as above, but narrows the largest tables down to
 # top-level industry sections and major trading partners (see
 # scope_filters.py) so the result fits inside AuraDB Free's 200k node /
-# 400k relationship cap for stage 3. Writes to validated/*.poc.nt (a
+# 400k relationship cap. Writes to validated/*.poc.nt (a
 # separate file and a separate manifest from the unscoped run, so neither
 # run interferes with the other -- run this any time without touching
 # your full-fidelity output):
@@ -98,9 +96,8 @@ completely untouched.
 The unscoped run is still the default and always produces the full,
 faithful dataset -- `--scope poc` is purely an opt-in narrowing for a
 demo that needs to fit a free database tier, not a replacement for it.
-```
 
-Reads raw JSON from the `landing_zone/` prefix in your bucket (exactly
+Reads raw JSON from the `landing_zone/` prefix in your container (exactly
 where `fetch_cbs_tables.py` already writes) and produces:
 
 - `validated/<name>.ttl` — RDF that passed the SHACL gate

@@ -1,13 +1,13 @@
 """
 Orchestrator for the Transform & Validate stage.
 
-Pulls new raw files from the R2 landing bucket (same bucket/prefix
-fetch_cbs_tables.py already writes to -- landing_zone/<table>_<ts>.json),
-runs each through RDF Mapping -> Glossary Alignment -> Validation Gate,
-and writes conforming graphs to a "validated/" prefix in the same bucket,
-ready for the Incremental Load Controller (stage 3). Anything that fails
-validation is logged and skipped, with the exact SHACL reason -- see
-"How failures work" below.
+Pulls new raw files from the Azure Blob landing container (same
+container/prefix fetch_cbs_tables.py already writes to --
+landing_zone/<table>_<ts>.json), runs each through RDF Mapping ->
+Glossary Alignment -> Validation Gate, and writes conforming graphs to a
+"validated/" prefix in the same container, ready for the Incremental
+Load Controller (stage 3). Anything that fails validation is logged and
+skipped, with the exact SHACL reason -- see "How failures work" below.
 
 Processes rows in BATCHES rather than building one giant in-memory graph
 per table. Two of the 13 tables (81578NED: 163k+ rows, 86165NED: 18k+
@@ -24,17 +24,17 @@ skipped, logged with its exact reason, and everything else still gets
 written. This is both more correct and faster than the original
 all-or-nothing-per-file approach.
 
-Reuses the exact same R2 env vars fetch_cbs_tables.py / your GitHub
-Actions workflow already use -- no new secrets needed:
+Reuses the exact same Azure env vars fetch_cbs_tables.py / your GitHub
+Actions workflow already use -- no new secrets needed beyond the two
+below (migrated from R2's four -- see README for the full variable list
+and what each one is for):
 
-    R2_ACCOUNT_ID
-    R2_ACCESS_KEY_ID
-    R2_SECRET_ACCESS_KEY
-    R2_BUCKET_NAME
+    AZURE_STORAGE_CONNECTION_STRING
+    AZURE_STORAGE_CONTAINER
 
 Usage:
-    python run_transform.py                 # process new files from R2
-    python run_transform.py --local         # test against sample_landing/, no R2/credentials needed
+    python run_transform.py                 # process new files from Azure Blob
+    python run_transform.py --local         # test against sample_landing/, no Azure/credentials needed
     pip install -r requirements.txt
 """
 
@@ -44,7 +44,8 @@ import os
 import sys
 import time
 
-import boto3
+from azure.core.exceptions import ResourceNotFoundError
+from azure.storage.blob import BlobServiceClient, ContentSettings
 
 from rdf_mapper import map_rows_to_graph
 from scope_filters import apply_scope
@@ -58,38 +59,33 @@ MANIFEST_KEY = "validated/_processed_manifest.json"
 BATCH_SIZE = 2000  # rows per batch -- keeps memory bounded and progress visible on large tables
 
 
-def get_r2_client():
-    account_id = os.environ.get("R2_ACCOUNT_ID")
-    access_key = os.environ.get("R2_ACCESS_KEY_ID")
-    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
-    bucket = os.environ.get("R2_BUCKET_NAME")
-    if not all([account_id, access_key, secret_key, bucket]):
+def get_blob_container():
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.environ.get("AZURE_STORAGE_CONTAINER")
+    if not all([conn_str, container_name]):
         sys.exit(
-            "Missing R2 config. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, "
-            "R2_BUCKET_NAME as environment variables -- the same ones fetch_cbs_tables.py uses. "
-            "Never hardcode them here or commit them."
+            "Missing Azure Blob config. Set AZURE_STORAGE_CONNECTION_STRING and "
+            "AZURE_STORAGE_CONTAINER as environment variables -- the same ones "
+            "fetch_cbs_tables.py uses. Never hardcode them here or commit them."
         )
-    client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="auto",
-    )
-    return client, bucket
+    service = BlobServiceClient.from_connection_string(conn_str)
+    return service.get_container_client(container_name)
 
 
-def load_manifest(client, bucket, manifest_key: str = MANIFEST_KEY) -> set:
+def load_manifest(container, manifest_key: str = MANIFEST_KEY) -> set:
     try:
-        obj = client.get_object(Bucket=bucket, Key=manifest_key)
-        return set(json.loads(obj["Body"].read())["processed_keys"])
-    except client.exceptions.NoSuchKey:
+        data = container.download_blob(manifest_key).readall()
+        return set(json.loads(data)["processed_keys"])
+    except ResourceNotFoundError:
         return set()
 
 
-def save_manifest(client, bucket, processed_keys: set, manifest_key: str = MANIFEST_KEY):
+def save_manifest(container, processed_keys: set, manifest_key: str = MANIFEST_KEY):
     body = json.dumps({"processed_keys": sorted(processed_keys)}, indent=2).encode()
-    client.put_object(Bucket=bucket, Key=manifest_key, Body=body, ContentType="application/json")
+    container.upload_blob(
+        manifest_key, body, overwrite=True,
+        content_settings=ContentSettings(content_type="application/json"),
+    )
 
 
 def process_payload(payload: dict, source_key: str, scope: str | None = None):
@@ -173,15 +169,14 @@ def _out_suffix(scope: str | None) -> str:
     return ".poc.nt" if scope == "poc" else ".nt"
 
 
-def run_r2(scope: str | None = None, force: bool = False):
-    client, bucket = get_r2_client()
+def run_azure(scope: str | None = None, force: bool = False):
+    container = get_blob_container()
     manifest_key = _manifest_key(scope)
-    processed = load_manifest(client, bucket, manifest_key)
+    processed = load_manifest(container, manifest_key)
 
-    resp = client.list_objects_v2(Bucket=bucket, Prefix=RAW_PREFIX)
     keys = [
-        o["Key"] for o in resp.get("Contents", [])
-        if o["Key"].endswith(".json")
+        b.name for b in container.list_blobs(name_starts_with=RAW_PREFIX)
+        if b.name.endswith(".json")
         # --force skips the "already processed" check. Needed because a
         # raw file gets marked processed here even when it produced NO
         # validated output (e.g. every batch failed SHACL) -- otherwise a
@@ -189,7 +184,7 @@ def run_r2(scope: str | None = None, force: bool = False):
         # to re-run against, and "No new raw files to transform" would
         # print forever even though the fix was never actually applied to
         # that table's data.
-        and (force or o["Key"] not in processed)
+        and (force or b.name not in processed)
     ]
 
     if not keys:
@@ -200,35 +195,40 @@ def run_r2(scope: str | None = None, force: bool = False):
     print(f"Found {len(keys)} new raw file(s) to transform{label}.")
     for key in keys:
         print(f"Processing {key} ...")
-        obj = client.get_object(Bucket=bucket, Key=key)
-        payload = json.loads(obj["Body"].read())
+        payload = json.loads(container.download_blob(key).readall())
 
         nt_content, notes = process_payload(payload, key, scope)
         base = os.path.basename(key).replace(".json", "")
 
         if nt_content is not None:
             out_key = f"{VALIDATED_PREFIX}{base}{_out_suffix(scope)}"
-            client.put_object(Bucket=bucket, Key=out_key, Body=nt_content.encode(), ContentType="application/n-triples")
+            container.upload_blob(
+                out_key, nt_content.encode(), overwrite=True,
+                content_settings=ContentSettings(content_type="application/n-triples"),
+            )
             print(f"  VALIDATED -> {out_key}")
         else:
             print("  Nothing written to validated/ (all batches failed validation, or --scope poc dropped every row).")
 
         if "NOTE:" in notes:
             report_key = f"{REJECTED_PREFIX}{base}{_out_suffix(scope).replace('.nt', '')}.notes.txt"
-            client.put_object(Bucket=bucket, Key=report_key, Body=notes.encode(), ContentType="text/plain")
+            container.upload_blob(
+                report_key, notes.encode(), overwrite=True,
+                content_settings=ContentSettings(content_type="text/plain"),
+            )
             print(f"  Notes (uncurated fields / rejected batches) -> {report_key}")
 
         processed.add(key)
         # Save the manifest after EVERY file, not just at the end -- so a
         # later failure (or a cancelled run) doesn't forget files that
         # already succeeded and force a wasteful full re-run.
-        save_manifest(client, bucket, processed, manifest_key)
+        save_manifest(container, processed, manifest_key)
 
     print("Done. Manifest updated -- next run will skip everything already processed here.")
 
 
 def run_local(scope: str | None = None):
-    """Test mode: reads ./sample_landing/*.json, writes ./validated_output/*.nt. No R2 needed."""
+    """Test mode: reads ./sample_landing/*.json, writes ./validated_output/*.nt. No Azure needed."""
     here = os.path.dirname(os.path.abspath(__file__))
     in_dir = os.path.join(here, "sample_landing")
     out_dir = os.path.join(here, "validated_output")
@@ -257,7 +257,7 @@ def run_local(scope: str | None = None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local", action="store_true", help="run against sample_landing/ instead of R2")
+    parser.add_argument("--local", action="store_true", help="run against sample_landing/ instead of Azure Blob")
     parser.add_argument(
         "--scope", choices=["poc"], default=None,
         help="poc: narrow rows to top-level industry sections + major trading partners "
@@ -277,4 +277,4 @@ if __name__ == "__main__":
     if args.local:
         run_local(args.scope)
     else:
-        run_r2(args.scope, args.force)
+        run_azure(args.scope, args.force)

@@ -39,14 +39,14 @@ memory bounded and progress visible on the largest tables, mirroring the
 same lesson learned in transform/run_transform.py.
 
 Usage:
-    python run_load.py                 # load new files from R2 validated/ into Neo4j
+    python run_load.py                 # load new files from Azure Blob validated/ into Neo4j
     python run_load.py --dry-run       # parse + classify triples, print stats, touch NO database
-    python run_load.py --local         # same as above but reads ./sample_validated/*.nt instead of R2
+    python run_load.py --local         # same as above but reads ./sample_validated/*.nt instead of Azure
     pip install -r requirements.txt
 
-Env vars (same R2 vars fetch_cbs_tables.py / run_transform.py already use,
-plus three new Neo4j ones -- from your Aura instance's connection details):
-    R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+Env vars (same Azure vars fetch_cbs_tables.py / run_transform.py already
+use, plus three Neo4j ones -- from your Aura instance's connection details):
+    AZURE_STORAGE_CONNECTION_STRING, AZURE_STORAGE_CONTAINER
     NEO4J_URI          e.g. neo4j+s://xxxxxxxx.databases.neo4j.io
     NEO4J_USERNAME      usually "neo4j"
     NEO4J_PASSWORD      set when the Aura instance was created
@@ -313,45 +313,43 @@ def get_neo4j_driver():
     return GraphDatabase.driver(uri, auth=(user, password))
 
 
-def get_r2_client():
-    import boto3
+def get_blob_container():
+    from azure.storage.blob import BlobServiceClient
 
-    account_id = os.environ.get("R2_ACCOUNT_ID")
-    access_key = os.environ.get("R2_ACCESS_KEY_ID")
-    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY")
-    bucket = os.environ.get("R2_BUCKET_NAME")
-    if not all([account_id, access_key, secret_key, bucket]):
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    container_name = os.environ.get("AZURE_STORAGE_CONTAINER")
+    if not all([conn_str, container_name]):
         sys.exit(
-            "Missing R2 config. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, "
-            "R2_BUCKET_NAME as environment variables -- the same ones fetch_cbs_tables.py uses."
+            "Missing Azure Blob config. Set AZURE_STORAGE_CONNECTION_STRING and "
+            "AZURE_STORAGE_CONTAINER as environment variables -- the same ones "
+            "fetch_cbs_tables.py uses."
         )
-    client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="auto",
-    )
-    return client, bucket
+    service = BlobServiceClient.from_connection_string(conn_str)
+    return service.get_container_client(container_name)
 
 
-def load_manifest(client, bucket, manifest_key: str = LOAD_MANIFEST_KEY) -> set:
+def load_manifest(container, manifest_key: str = LOAD_MANIFEST_KEY) -> set:
+    from azure.core.exceptions import ResourceNotFoundError
     try:
-        obj = client.get_object(Bucket=bucket, Key=manifest_key)
-        return set(json.loads(obj["Body"].read())["processed_keys"])
-    except client.exceptions.NoSuchKey:
+        data = container.download_blob(manifest_key).readall()
+        return set(json.loads(data)["processed_keys"])
+    except ResourceNotFoundError:
         return set()
 
 
-def save_manifest(client, bucket, processed_keys: set, manifest_key: str = LOAD_MANIFEST_KEY):
+def save_manifest(container, processed_keys: set, manifest_key: str = LOAD_MANIFEST_KEY):
+    from azure.storage.blob import ContentSettings
     body = json.dumps({"processed_keys": sorted(processed_keys)}, indent=2).encode()
-    client.put_object(Bucket=bucket, Key=manifest_key, Body=body, ContentType="application/json")
+    container.upload_blob(
+        manifest_key, body, overwrite=True,
+        content_settings=ContentSettings(content_type="application/json"),
+    )
 
 
-def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None, force: bool = False):
-    client, bucket = get_r2_client()
+def run_azure(dry_run: bool, tables: set | None = None, scope: str | None = None, force: bool = False):
+    container = get_blob_container()
     manifest_key = "load/_processed_manifest_poc.json" if scope == "poc" else LOAD_MANIFEST_KEY
-    processed = load_manifest(client, bucket, manifest_key)
+    processed = load_manifest(container, manifest_key)
 
     # transform's --scope poc writes "<table>.poc.nt" instead of
     # "<table>.nt" -- match the SAME suffix here, in both directions,
@@ -359,17 +357,16 @@ def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None, f
     # ("foo.poc.nt".endswith(".nt") is also True, so this can't be a
     # plain endswith(".nt") check or a poc run would load full files too.)
     suffix = ".poc.nt" if scope == "poc" else ".nt"
-    resp = client.list_objects_v2(Bucket=bucket, Prefix=VALIDATED_PREFIX)
     keys = [
-        o["Key"] for o in resp.get("Contents", [])
-        if o["Key"].endswith(suffix)
-        and (scope == "poc" or not o["Key"].endswith(".poc.nt"))
+        b.name for b in container.list_blobs(name_starts_with=VALIDATED_PREFIX)
+        if b.name.endswith(suffix)
+        and (scope == "poc" or not b.name.endswith(".poc.nt"))
         # --force skips the "already processed" check entirely -- needed
         # after wiping the Neo4j database by hand (the manifest still
         # thinks those files were loaded, but the graph they were loaded
         # into no longer exists), and useful for --dry-run any time you
         # want real stats on files that are technically already loaded.
-        and (force or o["Key"] not in processed)
+        and (force or b.name not in processed)
     ]
     if tables:
         # Filter by table ID -- the filename is always "<table_id>_<timestamp>.nt",
@@ -390,13 +387,12 @@ def run_r2(dry_run: bool, tables: set | None = None, scope: str | None = None, f
     print(f"Found {len(keys)} new validated file(s) to load{' (DRY RUN -- no writes)' if dry_run else ''}.")
     for key in keys:
         print(f"Processing {key} ...")
-        obj = client.get_object(Bucket=bucket, Key=key)
-        text = obj["Body"].read().decode("utf-8")
+        text = container.download_blob(key).readall().decode("utf-8")
         stats = load_stream(text.splitlines(), driver, dry_run, key)
         print(f"  {stats}")
         if not dry_run:
             processed.add(key)
-            save_manifest(client, bucket, processed, manifest_key)
+            save_manifest(container, processed, manifest_key)
 
     if driver:
         driver.close()
@@ -433,7 +429,7 @@ def run_local(dry_run: bool, tables: set | None = None, scope: str | None = None
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local", action="store_true", help="read ./sample_validated/*.nt instead of R2")
+    parser.add_argument("--local", action="store_true", help="read ./sample_validated/*.nt instead of Azure Blob")
     parser.add_argument("--dry-run", action="store_true", help="parse + classify triples, print stats, write nothing")
     parser.add_argument(
         "--tables", default=None,
@@ -462,4 +458,4 @@ if __name__ == "__main__":
     if args.local:
         run_local(args.dry_run, tables, args.scope)
     else:
-        run_r2(args.dry_run, tables, args.scope, args.force)
+        run_azure(args.dry_run, tables, args.scope, args.force)

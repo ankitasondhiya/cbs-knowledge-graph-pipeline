@@ -2,5 +2,5 @@ __pycache__/
 *.pyc
 .venv/
 
-# Raw data lives in Cloudflare R2, not git -- too large/frequent to version here.
+# Raw data lives in Azure Blob Storage, not git -- too large/frequent to version here.
 landing_zone/

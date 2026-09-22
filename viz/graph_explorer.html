@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CBS Knowledge Graph Explorer</title>
+<script src="https://unpkg.com/neo4j-driver@5/lib/browser/neo4j-web.min.js"></script>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<!-- cola + cytoscape-cola: gives the graph vis-network's old "springy,
+     moveable" feel -- while you drag one node, connected nodes react and
+     resettle live, instead of sitting frozen until the next full layout.
+     Loaded from CDN like the two scripts above; if either fails to load
+     (e.g. a network hiccup) the code below detects that and just falls
+     back to plain (still-draggable, just non-reactive) dragging -- nothing
+     else on the page depends on this. -->
+<script src="https://unpkg.com/webcola@3.4.0/WebCola/cola.min.js"></script>
+<script src="https://unpkg.com/cytoscape-cola@2.5.1/cytoscape-cola.js"></script>
+<style>
+  :root {
+    --branch: #29B6F6;
+    --concept: #AFB42B;
+    --country: #F57C00;
+    --dataset: #FF8A65;
+    --dimensionvalue: #4FC3F7;
+    --region: #66BB6A;
+    --entity: #A1887F;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --border: #e0e0e0;
+    --text: #222;
+    --muted: #777;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; margin-right: 8px; white-space: nowrap; }
+  input, select, button {
+    font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  }
+  button { cursor: pointer; background: #2b2b2b; color: white; border: none; }
+  button:hover { background: #444; }
+  button.secondary { background: #eee; color: #222; }
+  button.secondary:hover { background: #ddd; }
+  #connBar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #connBar input { width: 190px; }
+  #connBar input.short { width: 100px; }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; display: inline-block; }
+  .status-dot.ok { background: #43a047; }
+  .status-dot.err { background: #e53935; }
+  #langToggle button.active { background: #2b2b2b; color: white; }
+  #langToggle button { background: #eee; color: #333; }
+  #viewToggle button.active { background: #2b2b2b; color: white; }
+  #viewToggle button { background: #eee; color: #333; }
+  #chartModeToggle button { font-size: 11px; padding: 4px 8px; }
+  #chartModeToggle button.active { background: #2b2b2b; color: white; }
+  #chartModeToggle button { background: #eee; color: #333; }
+  #chartView { position: absolute; inset: 0; z-index: 8; padding: 22px 28px; overflow-y: auto; background: var(--bg); }
+  #chartView h2 { font-size: 15px; margin: 0 0 4px 0; }
+  #chartHeader { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+  .bar-row rect { cursor: pointer; }
+  #chartTooltip {
+    position: fixed; display: none; background: #2b2b2b; color: white; font-size: 12px;
+    padding: 5px 9px; border-radius: 5px; pointer-events: none; z-index: 50; white-space: nowrap;
+  }
+  #chartTable { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 12.5px; max-width: 480px; }
+  #chartTable th, #chartTable td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #eee; }
+  #chartTable th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  #mainArea { flex: 1; position: relative; overflow: hidden; }
+  /* #network is ALWAYS present/visible (never display:none) -- vis-network
+     silently corrupts its own canvas if its container is hidden that way,
+     which is what caused "Cannot read properties of null (reading
+     'style')" on every action afterward. Chart view instead overlays on
+     top of it with its own opaque background when active. */
+  #network { position: absolute; inset: 0; background: var(--bg); }
+  #cyCanvas { position: absolute; inset: 0; }
+  #graphCaption {
+    position: absolute; top: 14px; left: 14px; max-width: 420px; z-index: 10;
+    background: rgba(255,255,255,0.96); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-size: 12.5px; line-height: 1.5; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    display: none;
+  }
+  #graphCaption .cap-close { float: right; cursor: pointer; color: var(--muted); margin-left: 8px; }
+  .preset-btn { display: block; width: 100%; text-align: left; margin-bottom: 6px; background: #f0f0f0; color: #222; font-size: 12px; padding: 8px 10px; }
+  .preset-btn:hover { background: #e2e2e2; }
+  .preset-btn b { display: block; font-size: 12.5px; }
+  .preset-btn span { color: var(--muted); font-size: 11px; }
+  #sidebar {
+    width: 320px; background: var(--panel); border-left: 1px solid var(--border);
+    padding: 14px; overflow-y: auto; font-size: 13px;
+  }
+  #sidebar h3 { margin: 0 0 8px 0; font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: .04em; }
+  #propsTable { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  #propsTable td { padding: 4px 4px; border-bottom: 1px solid #f0f0f0; vertical-align: top; word-break: break-word; }
+  #propsTable td:first-child { color: var(--muted); width: 40%; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; color: white; font-size: 11px;
+    font-weight: 600; margin-bottom: 8px;
+  }
+  #legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  #searchResults { margin-top: 8px; }
+  .result-row {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+    cursor: pointer; font-size: 12px; background: #fafafa;
+  }
+  .result-row:hover { background: #eee; }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  #expandLimit { width: 60px; }
+  .empty-msg { color: var(--muted); text-align: center; margin-top: 40px; font-size: 13px; padding: 0 30px; line-height: 1.6; }
+  .filter-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f2f2f2; }
+  .filter-row .fdot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .filter-row .fname { flex: 1; font-size: 12px; }
+  .filter-row .fcount { color: var(--muted); font-size: 11px; }
+  .filter-row .fload { font-size: 11px; padding: 3px 6px; }
+  .filter-row .flimit { width: 42px; font-size: 11px; padding: 3px 4px; }
+  #errBox { color: #c62828; font-size: 12px; margin-top: 6px; white-space: pre-wrap; }
+  .rel-row { padding: 4px 0; border-bottom: 1px solid #f2f2f2; }
+  .rel-row b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔎 CBS Knowledge Graph Explorer</h1>
+  <div id="connBar">
+    <input id="uri" placeholder="neo4j+s://xxxxxxxx.databases.neo4j.io" />
+    <input id="user" class="short" placeholder="username" value="neo4j" />
+    <input id="pass" class="short" type="password" placeholder="password" />
+    <button id="connectBtn">Connect</button>
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText" class="hint">not connected</span>
+  </div>
+  <div id="langToggle">
+    <button id="langNl" class="active">NL</button>
+    <button id="langEn">EN</button>
+  </div>
+  <div id="viewToggle">
+    <button id="viewGraphBtn" class="active">🕸 Graph view</button>
+    <button id="viewChartBtn">📊 Chart view</button>
+  </div>
+</header>
+
+<div id="legend">
+  <div class="legend-item"><span class="legend-dot" style="background:var(--branch)"></span>Branch (industry)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--concept)"></span>Concept (what's measured)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--country)"></span>Country</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--dataset)"></span>Dataset (CBS survey)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--region)"></span>Region</div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--entity)"></span>Observation (a data point)</div>
+</div>
+
+<main>
+ <div id="mainArea">
+  <div id="network">
+    <div id="cyCanvas"></div>
+    <div id="graphCaption"></div>
+    <div class="empty-msg" id="emptyMsg">
+      Connect to your Aura instance above — a starter graph loads automatically,
+      and the "Demo examples" panel on the right gives you a few one-click,
+      guaranteed-to-work views to start from.
+    </div>
+  </div>
+  <div id="chartView" style="display:none">
+    <div id="chartHeader">
+      <div>
+        <h2>Nodes by type</h2>
+        <div class="hint" id="chartModeHint">Counting whatever's currently loaded on the Graph view canvas — filter or browse there and this updates.</div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <div id="chartModeToggle">
+          <button id="chartModeCanvas" class="active">On canvas</button>
+          <button id="chartModeDb">Whole database</button>
+        </div>
+        <button id="refreshChartBtn" class="secondary" style="display:none">Refresh</button>
+      </div>
+    </div>
+    <div id="chartHint" class="hint">Connect above to see this chart.</div>
+    <svg id="barChart" width="100%"></svg>
+    <table id="chartTable"><thead><tr><th>Type</th><th>Count</th></tr></thead><tbody></tbody></table>
+  </div>
+ </div>
+  <div id="chartTooltip"></div>
+  <div id="sidebar">
+    <h3>What the arrows mean</h3>
+    <div class="hint" id="relLegend"></div>
+
+    <h3 style="margin-top:20px">Demo examples</h3>
+    <div class="hint">Four ready-made, guaranteed-non-empty views for walking a stakeholder through the graph, in order:</div>
+    <div id="presetButtons" style="margin-top:8px"></div>
+
+    <h3 style="margin-top:20px">Browse by value</h3>
+    <div class="hint">Pick a category, then a specific value in it:</div>
+    <select id="browseLabel" style="width:100%; margin-top:6px">
+      <option value="">Connect first...</option>
+    </select>
+    <select id="browseValue" style="width:100%; margin-top:6px" disabled>
+      <option value="">(pick a category above)</option>
+    </select>
+    <div style="margin-top:6px; display:flex; flex-direction:column; gap:4px;">
+      <button id="browseShowBtn">Show</button>
+      <label class="hint" style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="browseExpand" checked /> also expand it
+      </label>
+      <label class="hint" style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="browseReplace" checked /> clear canvas first (so this is the only thing shown)
+      </label>
+    </div>
+
+    <h3 style="margin-top:20px">Filter by type <span class="hint" id="labelFilterHint"></span></h3>
+    <div id="labelFilters" class="hint">Connect above to see what's in your graph.</div>
+
+    <h3 style="margin-top:20px">Search</h3>
+    <input id="searchBox" style="width:100%" placeholder="Search any property..." />
+    <div style="margin-top:6px; display:flex; gap:6px; align-items:center;">
+      <button id="searchBtn">Search</button>
+      <button id="clearBtn" class="secondary">Clear canvas</button>
+    </div>
+    <div id="searchResults"></div>
+
+    <h3 style="margin-top:20px">Expand settings</h3>
+    <div class="hint">Max neighbors pulled in per click (keep this small so the canvas stays readable):</div>
+    <input id="expandLimit" type="number" value="25" min="1" max="200" style="margin-top:6px" />
+
+    <h3 style="margin-top:20px">Selected node</h3>
+    <div id="nodeDetail" class="hint">Click a node on the canvas to see its details here.</div>
+
+    <div class="hint" style="margin-top:24px; opacity:0.5;">build 2026-09-18-entranslate — if this doesn't match what I mention, you're on a cached copy: fully close this tab and reopen the file.</div>
+  </div>
+</main>
+
+<script>
+const LABEL_COLORS = {
+  Branch: 'var(--branch)'.replace('var(--branch)', '#29B6F6'),
+  Concept: '#AFB42B',
+  Country: '#F57C00',
+  Dataset: '#FF8A65',
+  DimensionValue: '#4FC3F7',
+  Region: '#66BB6A', Gemeente: '#66BB6A', Wijk: '#66BB6A', Buurt: '#66BB6A',
+  Observation: '#A1887F', Entity: '#A1887F'
+};
+function colorFor(labels) {
+  for (const l of labels) if (LABEL_COLORS[l]) return LABEL_COLORS[l];
+  return '#90A4AE';
+}
+
+let driver = null, session = null;
+let lang = 'nl'; // 'nl' or 'en'
+
+const seenNodeIds = new Set();
+const seenEdgeIds = new Set();
+
+// Cytoscape.js instead of vis-network -- vis-network's redraw runs
+// synchronously inside every data mutation and was throwing internally on
+// this data (a known fragility of that library with frequent live add/
+// remove/filter), which no amount of guarding around our own call sites
+// could fully paper over. Cytoscape is built around exactly this kind of
+// workload and doesn't have that failure mode.
+const cy = cytoscape({
+  container: document.getElementById('cyCanvas'),
+  elements: [],
+  style: [
+    { selector: 'node', style: {
+        'background-color': 'data(color)',
+        'label': 'data(label)',
+        'width': 24, 'height': 24,
+        'font-size': 10,
+        'text-valign': 'bottom', 'text-halign': 'center',
+        'text-margin-y': 4,
+        'color': '#222',
+        'text-wrap': 'ellipsis', 'text-max-width': '110px',
+        'border-width': 1, 'border-color': '#ffffff',
+        // A white pill behind each label keeps text legible where nodes
+        // and edges overlap in a denser graph, instead of text-on-text.
+        'text-background-color': '#f7f7f8', 'text-background-opacity': 0.85,
+        'text-background-shape': 'roundrectangle', 'text-background-padding': '2px'
+    } },
+    { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#2b2b2b' } },
+    // Each relationship TYPE gets its own arrow color (data(relColor), set
+    // per-edge in addEdge from the REL_COLORS map) -- so color now answers
+    // two independent questions: node fill color = "what kind of thing is
+    // this", arrow color = "how is it connected". A gray fallback covers
+    // any relationship type not in REL_COLORS.
+    { selector: 'edge', style: {
+        'width': 1.5,
+        'line-color': 'data(relColor)',
+        'target-arrow-color': 'data(relColor)',
+        'target-arrow-shape': 'triangle',
+        'arrow-scale': 0.8,
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'font-size': 8,
+        'color': '#666',
+        'text-rotation': 'autorotate',
+        'text-background-color': '#f7f7f8', 'text-background-opacity': 0.85, 'text-background-padding': '1px'
+    } },
+    // Selecting a node highlights only ITS arrows (thicker + label
+    // darkened, but keeping each arrow's own relationship color) and fades
+    // every other relationship on the canvas, so you can see exactly what
+    // one node connects to instead of hunting through a tangle of lines.
+    { selector: 'edge.rel-highlight', style: {
+        'width': 3.5,
+        'font-size': 9, 'font-weight': 'bold', 'color': '#222', 'z-index': 999,
+        'text-background-opacity': 1
+    } },
+    { selector: 'edge.rel-dim', style: { 'opacity': 0.12 } }
+  ],
+  layout: { name: 'preset' }, // no elements yet at init -- real layouts run after data is added
+  wheelSensitivity: 0.25
+});
+
+// Register the cola extension if both CDN scripts actually loaded. Wrapped
+// in try/catch + an existence check rather than assumed, since this is the
+// one new external dependency added for the "moveable" request -- if it's
+// ever unavailable, everything else (cose auto-layout, plain dragging,
+// every existing feature) keeps working exactly as before.
+let colaAvailable = false;
+try {
+  if (window.cytoscapeCola) {
+    cytoscape.use(window.cytoscapeCola);
+    colaAvailable = true;
+  }
+} catch (e) { console.warn('cola extension unavailable, falling back to static dragging', e); }
+
+// ---- "Moveable" live dragging (like the original vis-network version) ----
+// vis-network's barnesHut physics made the whole graph feel alive: drag one
+// node and its neighbors spring/react in real time. Cytoscape's default
+// cose layout only repositions nodes when explicitly re-run (that's what
+// relayout() below does, on data changes), so a plain Cytoscape graph feels
+// static by comparison even though nodes are already individually
+// draggable.
+//
+// The fix: start a live cola force-simulation ONLY while a node is actively
+// being dragged (real pointer movement), and stop it the instant it's
+// released. This gives the exact springy, reactive feel from the video
+// during a drag, without ever running a background physics simulation
+// while you're just looking at the graph (which would fight the
+// deliberate cose layout, drain CPU, and risk the same kind of instability
+// the vis-network rewrite was meant to get away from).
+//
+// IMPORTANT: this listens on 'drag' (fires only while the node's position
+// is actually changing under the pointer), not 'grab' (fires on every
+// mousedown, including a plain click/tap with no movement at all). Using
+// 'grab' was the bug behind "tapping a node shifts its position" -- a
+// single click was enough to kick off a moment of live physics and nudge
+// the whole graph, even though you never dragged anything.
+let liveLayout = null;
+let dragPhysicsActive = false;
+function stopLiveLayout() {
+  dragPhysicsActive = false;
+  if (liveLayout) { try { liveLayout.stop(); } catch (e) {} liveLayout = null; }
+}
+cy.on('drag', 'node', () => {
+  if (!colaAvailable || dragPhysicsActive) return; // only start once per drag, on real movement
+  dragPhysicsActive = true;
+  try {
+    liveLayout = cy.layout({
+      name: 'cola',
+      infinite: true,       // keeps simulating for as long as it runs -- we stop it ourselves on release
+      fit: false,            // never re-frames/zooms the viewport while you're mid-drag
+      randomize: false,      // start from current positions, don't jump
+      nodeSpacing: 8,
+      edgeLength: 90,
+      avoidOverlap: true,
+      animate: true,
+      maxSimulationTime: 60000
+    });
+    liveLayout.run();
+  } catch (e) { console.warn('live drag physics skipped', e); liveLayout = null; dragPhysicsActive = false; }
+});
+cy.on('free', 'node', stopLiveLayout);
+cy.on('dragfree', 'node', stopLiveLayout);
+
+// Re-lays-out the graph after a data change. randomize:false keeps
+// already-placed nodes roughly where they are (so an incremental expand
+// doesn't reshuffle everything you were just looking at); pass true after
+// a full clear+reload so the fresh set gets spread out properly.
+//
+// nodeDimensionsIncludeLabels:true is the key setting for the overlap you
+// saw -- without it, cose only keeps NODE CIRCLES from overlapping and
+// treats the label text as free space, so long labels stack on top of
+// each other even though the dots themselves look fine. Combined with a
+// bigger nodeRepulsion/idealEdgeLength, this spreads things out enough to
+// actually read.
+function relayout(fresh) {
+  try {
+    cy.layout({
+      name: 'cose', animate: false, fit: true, padding: 40, randomize: !!fresh,
+      nodeDimensionsIncludeLabels: true,
+      nodeRepulsion: 12000, idealEdgeLength: 90, edgeElasticity: 120,
+      gravity: 40, numIter: 1500
+    }).run();
+  } catch (e) { console.warn('layout skipped', e); }
+}
+
+function safeSelect(id) {
+  try { cy.elements().unselect(); cy.$id(id).select(); highlightConnected(id); } catch (e) { console.warn('select skipped', e); }
+}
+
+// Highlights only the arrows touching one node (bold + dark) and fades
+// every other relationship on the canvas, so a stakeholder can see exactly
+// what a specific node connects to instead of reading a full tangle of
+// lines. Clearing selection (clicking empty canvas, or clearCanvas())
+// restores every arrow to normal.
+function highlightConnected(id) {
+  try {
+    cy.edges().removeClass('rel-highlight rel-dim');
+    const n = cy.$id(id);
+    if (!n || n.empty()) return;
+    const connected = n.connectedEdges();
+    connected.addClass('rel-highlight');
+    cy.edges().not(connected).addClass('rel-dim');
+  } catch (e) { console.warn('highlight skipped', e); }
+}
+function clearHighlight() {
+  try { cy.edges().removeClass('rel-highlight rel-dim'); } catch (e) {}
+}
+
+function setStatus(ok, text) {
+  document.getElementById('statusDot').className = 'status-dot ' + (ok === null ? '' : ok ? 'ok' : 'err');
+  document.getElementById('statusText').textContent = text;
+}
+
+document.getElementById('connectBtn').onclick = async () => {
+  const uri = document.getElementById('uri').value.trim();
+  const user = document.getElementById('user').value.trim();
+  const pass = document.getElementById('pass').value;
+  if (!uri || !user || !pass) { setStatus(false, 'fill in URI, username, password'); return; }
+  try {
+    setStatus(null, 'connecting...');
+    driver = neo4j.driver(uri, neo4j.auth.basic(user, pass));
+    await driver.verifyConnectivity();
+  } catch (e) {
+    setStatus(false, 'connection failed: ' + e.message);
+    driver = null;
+    return;
+  }
+  // From here on, the connection itself is good -- a real DB connection
+  // failure can no longer be reported. A problem in one of these three
+  // setup steps (e.g. a rendering hiccup while drawing the starter graph)
+  // is caught on its own below so it can't masquerade as "not connected".
+  setStatus(true, 'connected');
+  renderPresetButtons();
+  try { await discoverLabels(); } catch (e) { console.error('discoverLabels', e); }
+  try { await populateBrowseLabels(); } catch (e) { console.error('populateBrowseLabels', e); }
+  try { await loadDefaultGraph(); } catch (e) { console.error('loadDefaultGraph', e); }
+  setStatus(true, 'connected');
+};
+
+// Finds every node label actually present in YOUR graph (rather than
+// guessing names), with a real count for each, and builds one filter row
+// per label -- a checkbox to show/hide it on the canvas, plus a "Load"
+// button to pull in a sample straight from that type. This is the
+// reliable alternative to text search when you don't know what specific
+// word to type.
+let lastLabelCounts = []; // cached [{label, count}] so Chart view doesn't always re-query
+
+// Real label list + real counts, queried once and shared by the filter
+// panel, the Browse-by-value dropdown, and the bar chart -- so all three
+// always agree with each other and with whatever's actually in the DB.
+async function fetchLabelCounts() {
+  const result = await runQuery('CALL db.labels() YIELD label RETURN label ORDER BY label', {});
+  if (!result) return [];
+  const labels = result.records.map(r => r.get('label')).filter(l => l !== 'Entity');
+  const out = [];
+  for (const label of labels) {
+    const countRes = await runQuery(`MATCH (n:\`${label}\`) RETURN count(n) AS c`, {});
+    out.push({ label, count: countRes ? countRes.records[0].get('c').toNumber() : 0 });
+  }
+  out.sort((a, b) => b.count - a.count);
+  lastLabelCounts = out;
+  return out;
+}
+
+async function discoverLabels() {
+  const box = document.getElementById('labelFilters');
+  box.innerHTML = '<div class="hint">Loading label list...</div>';
+  const counts = await fetchLabelCounts();
+  box.innerHTML = '';
+  for (const { label, count } of counts) {
+    const row = document.createElement('div');
+    row.className = 'filter-row';
+    row.innerHTML = `
+      <input type="checkbox" checked data-label="${label}" class="visToggle" />
+      <span class="fdot" style="background:${colorFor([label])}"></span>
+      <span class="fname">${label}</span>
+      <span class="fcount">${count}</span>
+      <input type="number" class="flimit" value="10" min="1" max="300" />
+      <button class="fload secondary">Load</button>
+    `;
+    row.querySelector('.visToggle').addEventListener('change', (e) => toggleLabelVisibility(label, e.target.checked));
+    row.querySelector('.fload').addEventListener('click', () => {
+      const limit = parseInt(row.querySelector('.flimit').value, 10) || 10;
+      loadByLabel(label, limit);
+    });
+    box.appendChild(row);
+  }
+}
+
+function toggleLabelVisibility(label, visible) {
+  cy.nodes().forEach(n => {
+    if ((n.data('labels') || []).includes(label)) {
+      n.style('display', visible ? 'element' : 'none');
+    }
+  });
+}
+
+async function loadByLabel(label, limit) {
+  const result = await runQuery(`MATCH (n:\`${label}\`) RETURN n LIMIT $limit`, { limit: neo4j.int(limit) });
+  if (!result) return;
+  document.getElementById('emptyMsg').style.display = 'none';
+  result.records.forEach(rec => addNode(rec.get('n')));
+  relayout(false);
+}
+
+// "Browse by value" -- a friendlier alternative to typing search terms.
+// Category names are shown in plain English regardless of what the Neo4j
+// label is actually called (RegioCategory reads oddly to a business
+// audience, "Region category" doesn't).
+const BROWSE_LABELS = {
+  Branch: 'Industry (Branch)',
+  Country: 'Country',
+  Dataset: 'Dataset (CBS survey)',
+  RegioCategory: 'Region category',
+  ServiceCategory: 'Service category',
+  TradeDirection: 'Trade direction',
+  Concept: 'Concept (what is measured)'
+};
+let browseCache = {}; // label -> [{id, text}]
+
+async function populateBrowseLabels() {
+  const sel = document.getElementById('browseLabel');
+  sel.innerHTML = '<option value="">Choose a category...</option>';
+  for (const label of Object.keys(BROWSE_LABELS)) {
+    // Only offer categories that actually have nodes in THIS graph --
+    // e.g. if a table never made it in, its category won't show up as a
+    // dead end.
+    const res = await runQuery(`MATCH (n:\`${label}\`) RETURN count(n) AS c`, {});
+    const count = res ? res.records[0].get('c').toNumber() : 0;
+    if (count > 0) {
+      const opt = document.createElement('option');
+      opt.value = label;
+      opt.textContent = `${BROWSE_LABELS[label]} (${count})`;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+document.getElementById('browseLabel').addEventListener('change', async (e) => {
+  const label = e.target.value;
+  const valueSel = document.getElementById('browseValue');
+  valueSel.innerHTML = '<option value="">Loading...</option>';
+  valueSel.disabled = true;
+  if (!label) { valueSel.innerHTML = '<option value="">(pick a category above)</option>'; return; }
+
+  const result = await runQuery(`MATCH (n:\`${label}\`) RETURN n LIMIT 300`, {});
+  if (!result) return;
+  const items = result.records.map(rec => {
+    const node = rec.get('n');
+    return { id: node.elementId || node.identity.toString(), text: pickLabel(node.properties), node };
+  }).sort((a, b) => a.text.localeCompare(b.text));
+  browseCache[label] = items;
+
+  valueSel.innerHTML = '';
+  items.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.text;
+    valueSel.appendChild(opt);
+  });
+  valueSel.disabled = false;
+});
+
+document.getElementById('browseShowBtn').onclick = async () => {
+  const label = document.getElementById('browseLabel').value;
+  const valueId = document.getElementById('browseValue').value;
+  if (!label || !valueId) { setStatus(false, 'pick a category and a value first'); return; }
+
+  // Everything from here is wrapped so ANY failure -- the query, or
+  // anything after it -- shows up in the status line instead of failing
+  // silently. Previously an exception thrown after a successful query
+  // (e.g. from vis-network) aborted the whole thing with zero visible
+  // trace, which is indistinguishable from "the button did nothing."
+  setStatus(null, 'looking up...');
+  try {
+    const result = await runQuery(`MATCH (n) WHERE elementId(n) = $id RETURN n`, { id: valueId });
+    if (!result || result.records.length === 0) {
+      setStatus(false, 'could not find that node -- try re-picking the category to refresh the list');
+      return;
+    }
+    const node = result.records[0].get('n');
+
+    const replaced = document.getElementById('browseReplace').checked;
+    if (replaced) clearCanvas();
+    document.getElementById('emptyMsg').style.display = 'none';
+    const id = addNode(node);
+    safeSelect(id);
+    showDetail(node);
+
+    let addedCount = 1;
+    if (document.getElementById('browseExpand').checked) {
+      const limit = parseInt(document.getElementById('expandLimit').value, 10) || 25;
+      const expandResult = await runQuery(
+        `MATCH (n)-[r]-(m) WHERE elementId(n) = $id RETURN r, m, startNode(r) = n AS outgoing LIMIT $limit`,
+        { id, limit: neo4j.int(limit) }
+      );
+      if (expandResult) {
+        expandResult.records.forEach(rec => {
+          const m = rec.get('m');
+          const r = rec.get('r');
+          const outgoing = rec.get('outgoing');
+          const mId = addNode(m);
+          if (outgoing) addEdge(r, id, mId); else addEdge(r, mId, id);
+          addedCount++;
+        });
+      }
+    }
+    relayout(replaced);
+    setStatus(true, `showing "${pickLabel(node.properties)}" (${addedCount} node${addedCount === 1 ? '' : 's'} on canvas)`);
+  } catch (e) {
+    setStatus(false, 'Show failed: ' + e.message);
+    console.error('browseShowBtn', e);
+  }
+};
+
+// Seeds the canvas automatically right after connecting, so you land on
+// something real instead of a blank page -- a handful of nodes from each
+// of the most "story-friendly" types (skips Observation/Concept since
+// those are only meaningful once connected to something).
+async function loadDefaultGraph() {
+  const startLabels = ['Branch', 'Country', 'Dataset'];
+  for (const label of startLabels) {
+    const result = await runQuery(`MATCH (n:\`${label}\`) RETURN n LIMIT 8`, {});
+    if (result) result.records.forEach(rec => addNode(rec.get('n')));
+  }
+  document.getElementById('emptyMsg').style.display = 'none';
+  relayout(true);
+}
+
+document.getElementById('langNl').onclick = () => setLang('nl');
+document.getElementById('langEn').onclick = () => setLang('en');
+function setLang(l) {
+  lang = l;
+  document.getElementById('langNl').classList.toggle('active', l === 'nl');
+  document.getElementById('langEn').classList.toggle('active', l === 'en');
+  // relabel every node already on the canvas
+  cy.nodes().forEach(n => {
+    try { n.data('label', pickLabel(n.data('raw'))); } catch (e) { console.warn('relabel hiccup', e); }
+  });
+}
+
+// Picks the best display text for a node given the current language,
+// falling back to the other language, then to the last segment of its uri.
+// A neo4j Integer comes back as {low, high, ...} rather than a plain JS
+// number -- this unwraps it and formats it with thousands separators, so
+// "1234567" reads as "1,234,567" instead of a wall of digits.
+function formatNeoValue(val) {
+  let n = val;
+  if (val && typeof val === 'object' && typeof val.low === 'number') {
+    n = typeof val.toNumber === 'function' ? val.toNumber() : val.low;
+  }
+  if (typeof n === 'number') return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return String(n);
+}
+
+// Why the EN toggle used to look broken: CBS's raw data (and this
+// pipeline's rdf_mapper.py) only ever stores ONE label for Branch,
+// Country, RegioCategory, ServiceCategory and TradeDirection nodes --
+// prefLabelNl. There is no prefLabelEn on these at all, so switching to
+// EN just fell through to the same Dutch text with nothing visibly
+// changing. (Concept nodes are different: curated ones DO have a real
+// English label from glossary.py; only the not-yet-curated ones repeat
+// the same auto-generated text in both languages.)
+//
+// Fixing this properly means re-pulling/curating English labels upstream
+// in the pipeline. Short of that, this is a client-side translation
+// lookup for the values that actually show up in this graph -- CBS's 21
+// standard industry sections (SBI), common trade-direction/region-category
+// values, and the trading-partner countries you'll actually see in these
+// tables. Anything not in this dictionary is shown as the real Dutch text
+// with a small "(NL)" tag instead of silently pretending it's translated
+// -- so you always know whether what you're reading is a real EN label.
+const NL_EN_TRANSLATIONS = {
+  // CBS SBI top-level industry sections (Branch nodes; identical section
+  // labels are shared by SBI2008 and SBI2025 tables, see glossary.py)
+  'A Landbouw, bosbouw en visserij': 'A Agriculture, forestry and fishing',
+  'B Winning van delfstoffen': 'B Mining and quarrying',
+  'C Industrie': 'C Manufacturing',
+  'D Energievoorziening': 'D Electricity, gas, steam and air conditioning supply',
+  'E Waterbedrijven en afvalbeheer': 'E Water supply, sewerage and waste management',
+  'F Bouwnijverheid': 'F Construction',
+  'G Handel': 'G Wholesale and retail trade',
+  'H Vervoer en opslag': 'H Transportation and storage',
+  'I Horeca': 'I Accommodation and food service activities',
+  'J Informatie en communicatie': 'J Information and communication',
+  'K Financiële dienstverlening': 'K Financial institutions',
+  'L Verhuur van en handel in onroerend goed': 'L Real estate activities',
+  'M Specialistische zakelijke diensten': 'M Specialist business services',
+  'N Verhuur van roerende goederen en overige zakelijke dienstverlening': 'N Renting, leasing & business support services',
+  'O Openbaar bestuur, overheidsdiensten en verplichte sociale verzekeringen': 'O Public administration & social security',
+  'P Onderwijs': 'P Education',
+  'Q Gezondheids- en welzijnszorg': 'Q Human health and social work activities',
+  'R Cultuur, sport en recreatie': 'R Culture, sports and recreation',
+  'S Overige dienstverlening': 'S Other service activities',
+  'T Huishoudens': 'T Activities of households as employers',
+  'U Extraterritoriale organisaties': 'U Extraterritorial organizations',
+  // Trade direction / region category
+  'Invoer': 'Import', 'Uitvoer': 'Export', 'Saldo': 'Balance',
+  'Nederland': 'Netherlands', 'Buitenland': 'Abroad', 'Niet in te delen': 'Unclassified',
+  'Totaal landen': 'All countries',
+  // Common trading-partner countries seen in these CBS tables
+  'Duitsland': 'Germany', 'België': 'Belgium', 'Frankrijk': 'France',
+  'Verenigd Koninkrijk': 'United Kingdom', 'Verenigde Staten': 'United States',
+  'Italië': 'Italy', 'Spanje': 'Spain', 'Polen': 'Poland', 'Rusland': 'Russia',
+  'Japan': 'Japan', 'China (excl. Hongkong)': 'China (excl. Hong Kong)',
+  'Zweden': 'Sweden', 'Zwitserland': 'Switzerland', 'Oostenrijk': 'Austria',
+  'Denemarken': 'Denmark', 'Noorwegen': 'Norway', 'Ierland': 'Ireland',
+  'Portugal': 'Portugal', 'Griekenland': 'Greece', 'Tsjechië': 'Czechia',
+  'Hongarije': 'Hungary', 'India': 'India', 'Brazilië': 'Brazil',
+  'Canada': 'Canada', 'Zuid-Korea': 'South Korea', 'Turkije': 'Turkey'
+};
+function translateNl(text) {
+  if (!text) return null;
+  return NL_EN_TRANSLATIONS[String(text).trim()] || null;
+}
+
+function pickLabel(props) {
+  let text;
+  if (lang === 'en') {
+    // 1) a real curated English label, if the data actually has one
+    // 2) our own NL->EN lookup for known values
+    // 3) the Dutch text, honestly flagged as untranslated rather than
+    //    silently shown as if it were English
+    text = props.prefLabelEn
+      || translateNl(props.prefLabelNl)
+      || translateNl(props.labelNl)
+      || props.labelEn;
+    if (!text && props.prefLabelNl) text = props.prefLabelNl + ' (NL)';
+    if (!text && props.labelNl) text = props.labelNl + ' (NL)';
+  } else {
+    text = props.prefLabelNl || props.prefLabelEn || props.labelNl || props.labelEn;
+  }
+  text = text || props.label || props.title;
+
+  // Observation nodes have no name of their own -- each one IS a single
+  // measured number. Showing the raw table id ("cbs:84765NED (2024Q2)")
+  // on every single one is what made the graph unreadable: dozens of
+  // near-identical labels with no business meaning. Showing the actual
+  // value (what CBS measured, with its unit and period) is what a
+  // stakeholder actually wants to read off the node.
+  if (!text && props.value !== undefined) {
+    text = formatNeoValue(props.value);
+    if (props.unit) text += ' ' + props.unit;
+    if (props.period) text += ` (${props.period})`;
+  }
+  if (!text && props.sourceTable) {
+    text = props.sourceTable + (props.period ? ` (${props.period})` : '');
+  }
+  if (!text && props.uri) {
+    const parts = props.uri.split('/');
+    text = decodeURIComponent(parts[parts.length - 1]);
+  }
+  if (!text) text = '(node)';
+  text = String(text);
+  return text.length > 40 ? text.slice(0, 37) + '...' : text;
+}
+
+// Plain-English edge labels instead of the raw Cypher relationship type --
+// "measures" reads naturally in a demo, "HAS_VARIABLE" does not.
+const REL_LABELS = {
+  HAS_BRANCH: 'in industry',
+  HAS_COUNTRY: 'for country',
+  HAS_VARIABLE: 'measures',
+  IN_DATASET: 'from survey',
+  ABOUT_REGION: 'in region',
+  PART_OF: 'part of',
+  HAS_REGIO_CATEGORY: 'region type',
+  HAS_SERVICE_CATEGORY: 'service type',
+  HAS_TRADE_DIRECTION: 'trade direction'
+};
+function relLabel(type) {
+  return REL_LABELS[type] || type;
+}
+
+// Plain-English explanations behind each of the arrow labels above --
+// answers "what does 'measures' / 'from survey' actually mean here" without
+// needing to ask. Shown both as a static reference list in the sidebar and
+// as a hover tooltip on the arrows themselves.
+const REL_DESCRIPTIONS = {
+  HAS_BRANCH: 'Which industry / business sector this data point relates to.',
+  HAS_COUNTRY: 'Which trading-partner country this data point is about.',
+  HAS_VARIABLE: 'The specific thing CBS actually measured for this data point.',
+  IN_DATASET: 'Which CBS survey this data point was published in.',
+  ABOUT_REGION: 'Which region (municipality, district, area) this data point is about.',
+  PART_OF: 'This item is part of / belongs to the item it points to.',
+  HAS_REGIO_CATEGORY: 'What kind of region this is (e.g. municipality vs. district).',
+  HAS_SERVICE_CATEGORY: 'What kind of service this data point falls under.',
+  HAS_TRADE_DIRECTION: 'Whether this is an import or an export figure.'
+};
+function relDescription(type) {
+  return REL_DESCRIPTIONS[type] || 'Connects these two items.';
+}
+
+// Each relationship TYPE gets its own arrow color -- independent of node
+// fill color (which means "what type of thing is this node"). So node
+// color answers "what is this", arrow color answers "how does it connect".
+// Deliberately distinct from the node-type palette in LABEL_COLORS so the
+// two systems never look like they mean the same thing.
+const REL_COLORS = {
+  HAS_BRANCH: '#7E57C2',
+  HAS_COUNTRY: '#EC407A',
+  HAS_VARIABLE: '#26A69A',
+  IN_DATASET: '#5C6BC0',
+  ABOUT_REGION: '#8D6E63',
+  PART_OF: '#78909C',
+  HAS_REGIO_CATEGORY: '#FFB300',
+  HAS_SERVICE_CATEGORY: '#00ACC1',
+  HAS_TRADE_DIRECTION: '#C0CA33'
+};
+function relColor(type) {
+  return REL_COLORS[type] || '#bbbbbb';
+}
+
+function renderRelLegend() {
+  const box = document.getElementById('relLegend');
+  box.innerHTML = Object.keys(REL_LABELS).map(type =>
+    `<div class="rel-row"><span class="fdot" style="background:${relColor(type)}; display:inline-block; margin-right:4px;"></span><b>${relLabel(type)}</b> — ${relDescription(type)}</div>`
+  ).join('');
+}
+renderRelLegend(); // static -- doesn't depend on being connected
+
+function neo4jNodeToCy(node) {
+  const id = node.elementId || node.identity.toString();
+  const labels = node.labels || [];
+  return {
+    group: 'nodes',
+    data: {
+      id, label: pickLabel(node.properties), raw: node.properties,
+      color: colorFor(labels), labels
+    }
+  };
+}
+
+function addNode(node) {
+  const el = neo4jNodeToCy(node);
+  if (!seenNodeIds.has(el.data.id)) {
+    seenNodeIds.add(el.data.id);
+    try { cy.add(el); } catch (e) { console.warn('cy.add(node) hiccup', e); }
+  }
+  return el.data.id;
+}
+
+function addEdge(rel, fromId, toId) {
+  const id = rel.elementId || rel.identity.toString();
+  if (!seenEdgeIds.has(id)) {
+    seenEdgeIds.add(id);
+    try { cy.add({ group: 'edges', data: { id, source: fromId, target: toId, label: relLabel(rel.type), relType: rel.type, relColor: relColor(rel.type) } }); }
+    catch (e) { console.warn('cy.add(edge) hiccup', e); }
+  }
+}
+
+async function runQuery(cypher, params) {
+  if (!driver) { setStatus(false, 'connect first'); return null; }
+  const s = driver.session();
+  try {
+    const result = await s.run(cypher, params);
+    return result;
+  } catch (e) {
+    // Surfaced instead of swallowed -- a query that errors (bad syntax,
+    // a label that doesn't exist, a permissions issue) used to look
+    // identical to "no matches found", which is what made the earlier
+    // search look silently broken.
+    setStatus(false, 'query error: ' + e.message);
+    console.error(cypher, e);
+    return null;
+  } finally {
+    await s.close();
+  }
+}
+
+document.getElementById('searchBtn').onclick = doSearch;
+document.getElementById('searchBox').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+async function doSearch() {
+  const q = document.getElementById('searchBox').value.trim();
+  if (!q) return;
+  const result = await runQuery(
+    // Checks every property on the node, not a fixed list -- different
+    // node types here use different property names for their display text
+    // (Concept/Branch/Country use prefLabelNl/prefLabelEn, Dataset uses
+    // plain "label", Observation has no label at all but carries the
+    // table id in "sourceTable") -- so a fixed guess-list misses things.
+    `MATCH (n)
+     WHERE any(k IN keys(n) WHERE toLower(toString(n[k])) CONTAINS toLower($q))
+     RETURN n LIMIT 25`, { q }
+  );
+  if (!result) return;
+  const box = document.getElementById('searchResults');
+  box.innerHTML = '';
+  if (result.records.length === 0) {
+    box.innerHTML = '<div class="hint">No matches.</div>';
+    return;
+  }
+  document.getElementById('emptyMsg').style.display = 'none';
+  result.records.forEach(rec => {
+    const node = rec.get('n');
+    const row = document.createElement('div');
+    row.className = 'result-row';
+    row.textContent = (node.labels.join(', ')) + ' — ' + pickLabel(node.properties);
+    row.onclick = () => {
+      const id = addNode(node);
+      relayout(false);
+      safeSelect(id);
+      try { cy.animate({ center: { eles: cy.$id(id) } }, { duration: 0 }); } catch (e) { console.warn('center skipped', e); }
+      showDetail(node);
+    };
+    box.appendChild(row);
+  });
+}
+
+function clearCanvas() {
+  try { cy.elements().remove(); } catch (e) { console.warn('cy clear hiccup', e); }
+  seenNodeIds.clear(); seenEdgeIds.clear();
+  document.getElementById('emptyMsg').style.display = 'block';
+  hideCaption();
+  clearHighlight();
+}
+document.getElementById('clearBtn').onclick = clearCanvas;
+
+function showCaption(html) {
+  const box = document.getElementById('graphCaption');
+  box.innerHTML = `<span class="cap-close" onclick="hideCaption()">✕</span>${html}`;
+  box.style.display = 'block';
+}
+function hideCaption() {
+  document.getElementById('graphCaption').style.display = 'none';
+}
+
+// ---- Demo examples: curated, guaranteed-non-empty views built from data
+// we've already confirmed exists (real label/relationship names from
+// load/README.md's predicate table, real counts seen in the app) -- so
+// these can't come back empty or depend on picking the "right" dropdown
+// value. Each one clears the canvas, draws a small real cluster, and
+// leaves a plain-English caption on screen explaining what it shows.
+const PRESETS = [
+  {
+    title: "1. Trading partners overview",
+    blurb: "Every country CBS tracks, with the real figures recorded for each",
+    caption: "Every trading-partner country in the graph, connected to the specific CBS measures recorded for it. <b>Start here</b> — it's small and easy to read.",
+    cypher: `MATCH (co:Country)<-[r1:HAS_COUNTRY]-(o:Observation)-[r2:HAS_VARIABLE]->(c:Concept)
+             RETURN co, r1, o, r2, c LIMIT 60`
+  },
+  {
+    title: "2. One industry, up close",
+    blurb: "The Trade sector (G Handel) and everything measured about it",
+    caption: "The <b>Trade industry</b> (\"G Handel\") and every real observation CBS recorded about it, each linked to what was actually measured. This is the \"ask about one industry\" story.",
+    cypher: `MATCH (b:Branch {prefLabelNl: 'G Handel'})<-[r1:HAS_BRANCH]-(o:Observation)-[r2:HAS_VARIABLE]->(c:Concept)
+             RETURN b, r1, o, r2, c LIMIT 40`
+  },
+  {
+    title: "3. What CBS actually measures",
+    blurb: "Curated, human-verified concepts and the survey each comes from",
+    caption: "A sample of <b>verified glossary concepts</b> (curated, human-checked measure names) each traced back to the real CBS survey (Dataset) it came from — this is the \"where did this number come from\" story.",
+    cypher: `MATCH (c:Concept {verified: true})<-[r1:HAS_VARIABLE]-(o:Observation)-[r2:IN_DATASET]->(d:Dataset)
+             RETURN c, r1, o, r2, d LIMIT 50`
+  },
+  {
+    title: "4. Read a single fact",
+    blurb: "Pick one real data point and see everything connected to it",
+    caption: "One real data point (an <b>Observation</b>), fully expanded — every industry, region, concept and dataset it's connected to. This is the \"here's exactly what one number means\" close-up.",
+    cypher: `MATCH (o:Observation)
+             WITH o LIMIT 1
+             MATCH (o)-[r]-(m)
+             RETURN o, r, m`
+  }
+];
+
+function renderPresetButtons() {
+  const box = document.getElementById('presetButtons');
+  box.innerHTML = '';
+  PRESETS.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.innerHTML = `<b>${p.title}</b><span>${p.blurb}</span>`;
+    btn.onclick = () => runPreset(p);
+    box.appendChild(btn);
+  });
+}
+
+// Adds every node AND relationship a query record contains, in two passes
+// (all nodes first, then edges) so an edge's endpoints always already
+// exist -- works for any RETURN shape without needing to know it upfront.
+function addRecordsToCanvas(records) {
+  records.forEach(rec => {
+    rec.keys.forEach(key => {
+      const val = rec.get(key);
+      if (val && val.labels !== undefined) addNode(val); // a Node
+    });
+  });
+  records.forEach(rec => {
+    rec.keys.forEach(key => {
+      const val = rec.get(key);
+      if (val && val.type !== undefined && val.startNodeElementId !== undefined) {
+        addEdge(val, val.startNodeElementId, val.endNodeElementId); // a Relationship
+      }
+    });
+  });
+}
+
+async function runPreset(preset) {
+  setStatus(null, `loading "${preset.title}"...`);
+  try {
+    const result = await runQuery(preset.cypher, {});
+    if (!result || result.records.length === 0) {
+      setStatus(false, `"${preset.title}" returned no data right now -- try another example`);
+      return;
+    }
+    clearCanvas();
+    document.getElementById('emptyMsg').style.display = 'none';
+    addRecordsToCanvas(result.records);
+    showCaption(preset.caption);
+    relayout(true);
+    setStatus(true, `showing: ${preset.title}`);
+  } catch (e) {
+    setStatus(false, `"${preset.title}" failed: ` + e.message);
+    console.error('runPreset', e);
+  }
+}
+
+cy.on('tap', 'node', (evt) => {
+  const n = evt.target;
+  cy.elements().unselect();
+  n.select();
+  highlightConnected(n.id());
+  showDetail({ labels: n.data('labels'), properties: n.data('raw') });
+});
+
+// Tapping empty canvas (not a node) clears the highlight so every arrow
+// goes back to normal.
+cy.on('tap', (evt) => {
+  if (evt.target === cy) clearHighlight();
+});
+
+// Hover tooltip on an arrow itself: shows the plain-English label plus the
+// fuller explanation from REL_DESCRIPTIONS, reusing the same tooltip box
+// the bar chart uses.
+cy.on('mouseover', 'edge', (evt) => {
+  const e = evt.target;
+  const tooltip = document.getElementById('chartTooltip');
+  tooltip.textContent = `${e.data('label')} — ${relDescription(e.data('relType'))}`;
+  tooltip.style.display = 'block';
+});
+cy.on('mousemove', 'edge', (evt) => {
+  const oe = evt.originalEvent;
+  if (!oe) return;
+  const tooltip = document.getElementById('chartTooltip');
+  tooltip.style.left = (oe.clientX + 14) + 'px';
+  tooltip.style.top = (oe.clientY + 10) + 'px';
+});
+cy.on('mouseout', 'edge', () => { document.getElementById('chartTooltip').style.display = 'none'; });
+
+// Double-click/double-tap a node to expand its neighbors -- 'dbltap' works
+// for both mouse double-click and touch double-tap.
+cy.on('dbltap', 'node', async (evt) => {
+  const id = evt.target.id();
+  const limit = parseInt(document.getElementById('expandLimit').value, 10) || 25;
+  const result = await runQuery(
+    `MATCH (n)-[r]-(m) WHERE elementId(n) = $id RETURN r, m, startNode(r) = n AS outgoing LIMIT $limit`,
+    { id, limit: neo4j.int(limit) }
+  );
+  if (!result) return;
+  result.records.forEach(rec => {
+    const m = rec.get('m');
+    const r = rec.get('r');
+    const outgoing = rec.get('outgoing');
+    const mId = addNode(m);
+    if (outgoing) addEdge(r, id, mId); else addEdge(r, mId, id);
+  });
+  relayout(false);
+  highlightConnected(id);
+});
+
+// ---- Chart view: a plain "nodes by type" bar chart, alongside the graph ----
+document.getElementById('viewGraphBtn').onclick = () => switchView('graph');
+document.getElementById('viewChartBtn').onclick = () => switchView('chart');
+document.getElementById('refreshChartBtn').onclick = () => renderBarChart(true);
+
+let chartMode = 'canvas'; // 'canvas' = whatever's loaded via Browse/Filter right now; 'db' = whole-database totals
+let chartViewActive = false;
+
+document.getElementById('chartModeCanvas').onclick = () => setChartMode('canvas');
+document.getElementById('chartModeDb').onclick = () => setChartMode('db');
+
+function setChartMode(mode) {
+  chartMode = mode;
+  document.getElementById('chartModeCanvas').classList.toggle('active', mode === 'canvas');
+  document.getElementById('chartModeDb').classList.toggle('active', mode === 'db');
+  document.getElementById('refreshChartBtn').style.display = mode === 'db' ? 'inline-block' : 'none';
+  document.getElementById('chartModeHint').textContent = mode === 'canvas'
+    ? "Counting whatever's currently loaded on the Graph view canvas — filter or browse there and this updates."
+    : "Counting every node of each type in the whole database, regardless of what's loaded on the canvas.";
+  renderBarChart(false);
+}
+
+// Live-updates the chart whenever the canvas changes (Browse by value,
+// Filter-panel Load, an Expand click...) as long as Chart view is the one
+// currently visible and mode is 'canvas' -- this is what makes filtering
+// on the graph actually show up in the chart, instead of the chart being
+// a frozen whole-database snapshot from whenever it was first opened.
+cy.on('add remove', () => {
+  try {
+    if (chartViewActive && chartMode === 'canvas') renderBarChart(false);
+  } catch (e) { console.warn('live chart refresh skipped', e); }
+});
+
+function switchView(v) {
+  document.getElementById('viewGraphBtn').classList.toggle('active', v === 'graph');
+  document.getElementById('viewChartBtn').classList.toggle('active', v === 'chart');
+  // #network is NEVER hidden -- Chart view just overlays on top of it with
+  // its own opaque background (position:absolute, higher z-index). See the
+  // CSS comment on #network for why: vis-network breaks permanently if its
+  // container is ever set display:none.
+  document.getElementById('chartView').style.display = v === 'chart' ? 'block' : 'none';
+  chartViewActive = (v === 'chart');
+  if (v === 'chart') renderBarChart(false);
+}
+
+// Tallies whatever's actually on the canvas right now, grouped by each
+// node's real type (skipping the generic :Entity label every node also
+// carries) -- computed instantly client-side, no query needed.
+function computeCanvasCounts() {
+  const tally = {};
+  cy.nodes().forEach(n => {
+    const primary = (n.data('labels') || []).find(l => l !== 'Entity') || 'Other';
+    tally[primary] = (tally[primary] || 0) + 1;
+  });
+  return Object.entries(tally).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
+}
+
+async function renderBarChart(forceRefresh) {
+  const hint = document.getElementById('chartHint');
+  const tbody = document.querySelector('#chartTable tbody');
+
+  if (chartMode === 'canvas') {
+    const counts = computeCanvasCounts();
+    if (!counts.length) {
+      hint.style.display = 'block';
+      hint.textContent = "Nothing on the canvas yet — go to Graph view and use Browse by value or Filter by type, or switch this to \"Whole database\".";
+      document.getElementById('barChart').innerHTML = '';
+      tbody.innerHTML = '';
+      return;
+    }
+    hint.style.display = 'none';
+    drawBarChart(counts);
+    return;
+  }
+
+  if (!driver) { hint.style.display = 'block'; hint.textContent = 'Connect above to see this chart.'; return; }
+  hint.style.display = 'block';
+  hint.textContent = 'Loading...';
+  const counts = (!forceRefresh && lastLabelCounts.length) ? lastLabelCounts : await fetchLabelCounts();
+  hint.style.display = 'none';
+  drawBarChart(counts);
+}
+
+// A plain horizontal bar chart: one bar per node type, sorted by count
+// (magnitude comparison, so ranking matters -- horizontal avoids rotated
+// labels for the longer type names). Colors reuse the exact same
+// label->color mapping as the graph legend, so "blue" means the same
+// thing in both views instead of two unrelated palettes. Single axis,
+// direct value labels (fine here since there are only ~9 bars), a
+// recessive baseline instead of a full grid, and a hover tooltip per bar
+// -- plus a plain table underneath as the non-visual fallback.
+function drawBarChart(counts) {
+  const svg = document.getElementById('barChart');
+  const tbody = document.querySelector('#chartTable tbody');
+  tbody.innerHTML = '';
+  if (!counts.length) { svg.innerHTML = ''; return; }
+
+  const width = Math.max(svg.clientWidth || 640, 320);
+  const rowH = 28, rowGap = 14, leftPad = 150, rightPad = 60, topPad = 10;
+  const max = Math.max(...counts.map(c => c.count), 1);
+  const barMaxW = width - leftPad - rightPad;
+  const height = topPad * 2 + counts.length * (rowH + rowGap);
+
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('height', height);
+
+  let html = `<line x1="${leftPad}" y1="${topPad - 4}" x2="${leftPad}" y2="${height - topPad + 4}" stroke="#ddd" stroke-width="1" />`;
+  counts.forEach((c, i) => {
+    const y = topPad + i * (rowH + rowGap);
+    const barW = Math.max(3, (c.count / max) * barMaxW);
+    const color = colorFor([c.label]);
+    const displayName = BROWSE_LABELS[c.label] || c.label;
+    html += `
+      <g class="bar-row" data-label="${displayName}" data-count="${c.count}">
+        <text x="${leftPad - 10}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="12" fill="#555">${displayName}</text>
+        <rect x="${leftPad}" y="${y}" width="${barW}" height="${rowH}" rx="4" fill="${color}" />
+        <text x="${leftPad + barW + 8}" y="${y + rowH / 2 + 4}" font-size="12" fill="#333">${c.count.toLocaleString()}</text>
+      </g>`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${displayName}</td><td>${c.count.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+  svg.innerHTML = html;
+
+  const tooltip = document.getElementById('chartTooltip');
+  svg.querySelectorAll('.bar-row').forEach(g => {
+    g.addEventListener('mouseenter', () => {
+      tooltip.textContent = `${g.dataset.label}: ${Number(g.dataset.count).toLocaleString()} nodes`;
+      tooltip.style.display = 'block';
+    });
+    g.addEventListener('mousemove', (e) => {
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top = (e.clientY + 10) + 'px';
+    });
+    g.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  });
+}
+
+function showDetail(node) {
+  const labels = node.labels || [];
+  const props = node.properties || {};
+  const color = colorFor(labels);
+  let html = `<span class="badge" style="background:${color}">${labels.join(', ')}</span>`;
+  html += '<table id="propsTable">';
+  Object.keys(props).sort().forEach(k => {
+    const val = (typeof props[k] === 'number' || (props[k] && typeof props[k].low === 'number'))
+      ? formatNeoValue(props[k]) : String(props[k]);
+    html += `<tr><td>${k}</td><td>${val}</td></tr>`;
+  });
+  html += '</table>';
+  html += '<div class="hint">Double-click this node on the canvas to expand its neighbors.</div>';
+  document.getElementById('nodeDetail').innerHTML = html;
+}
+</script>
+</body>
+</html>

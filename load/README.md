@@ -1,6 +1,6 @@
 # Incremental Load Controller — Stage 3
 
-Loads the validated RDF from stage 2 (`validated/*.nt` in R2) into Neo4j
+Loads the validated RDF from stage 2 (`validated/*.nt` in Azure Blob Storage) into Neo4j
 Aura as a property graph. `run_load.py` is the only file here — it's a
 direct translator from our own fixed RDF shape (the one `rdf_mapper.py`
 produces) into Cypher, not a general RDF importer.
@@ -52,29 +52,28 @@ its own Neo4j transaction.
 pip install -r requirements.txt
 
 # 1. Dry run first -- parses + classifies every triple, prints operation
-#    counts, and touches NEITHER Neo4j nor the R2 manifest. Safe to run
-#    against real R2 data any time, including before Neo4j credentials exist.
+#    counts, and touches NEITHER Neo4j nor the Azure Blob manifest. Safe
+#    to run against real Azure data any time, including before Neo4j
+#    credentials exist.
 python run_load.py --dry-run
 
-# 2. Same, but against the 4 sample files here instead of R2 -- no
-#    credentials needed at all:
+# 2. Same, but against the 4 sample files here instead of Azure Blob --
+#    no credentials needed at all:
 python run_load.py --local --dry-run
 
-# 3. The real thing, against R2 + your Aura instance:
-export R2_ACCOUNT_ID=...
-export R2_ACCESS_KEY_ID=...
-export R2_SECRET_ACCESS_KEY=...
-export R2_BUCKET_NAME=...
+# 3. The real thing, against Azure Blob + your Aura instance:
+export AZURE_STORAGE_CONNECTION_STRING=...   # from your storage account's "Access keys" page
+export AZURE_STORAGE_CONTAINER=...
 export NEO4J_URI=neo4j+s://xxxxxxxx.databases.neo4j.io   # from your Aura instance's "Connect" details
 export NEO4J_USERNAME=neo4j
 export NEO4J_PASSWORD=...                                 # set when the instance was created
 python run_load.py
 ```
 
-Reads from the `validated/` prefix in your bucket (only `.nt` files —
+Reads from the `validated/` prefix in your container (only `.nt` files —
 leftover `.ttl` files from before the batching fix are ignored). Tracks
 what's already been loaded in `load/_processed_manifest.json` in the same
-bucket, so reruns only pick up files landed since the last load — this is
+container, so reruns only pick up files landed since the last load — this is
 the "incremental" part of Incremental Load Controller.
 
 ## Verified
@@ -158,16 +157,18 @@ ignores it for deciding what to (re)process this run. Every file loaded
 this way is still recorded in the manifest afterward as normal, so a
 later plain (non-`--force`) run picks up correctly from there.
 
-The other tables stay fully landed and validated in R2 (`landing_zone/`,
-`validated/`) — they're just not loaded into this particular Neo4j
-instance. Nothing about fetch or transform changes; this is purely a
-load-stage decision, and it's revisable any time (a paid Aura tier removes
-the cap entirely, or a different `--tables` list can be loaded next).
+The other tables stay fully landed and validated in Azure Blob Storage
+(`landing_zone/`, `validated/`) — they're just not loaded into this
+particular Neo4j instance. Nothing about fetch or transform changes; this
+is purely a load-stage decision, and it's revisable any time (a paid Aura
+tier removes the cap entirely, or a different `--tables` list can be
+loaded next).
 
 ## Set up as a GitHub Actions job
 
 Add `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` as repo secrets
-(alongside your existing `R2_*` ones), then a `load.yml` workflow that
+(alongside your existing `AZURE_STORAGE_CONNECTION_STRING` and
+`AZURE_STORAGE_CONTAINER` ones), then a `load.yml` workflow that
 runs `python load/run_load.py` after `transform.yml` completes — the same
 `workflow_run` pattern `transform.yml` already uses to chain after
 `fetch.yml`.

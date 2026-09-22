@@ -9,16 +9,13 @@ that carry a time dimension ("Perioden") are fetched for their latest
 period only -- history accumulates naturally across runs via the
 timestamped files instead of re-pulling decades of quarters every time.
 
-The landing zone lives in Cloudflare R2 (S3-compatible object storage),
-not git -- these files are too large and too frequent to version-control
-sanely. Set these env vars (see .github/workflows/fetch.yml) to enable
-upload; without them the script just writes locally, which is enough for
-testing.
+The landing zone lives in Azure Blob Storage, not git -- these files are
+too large and too frequent to version-control sanely. Set these env vars
+(see .github/workflows/fetch.yml) to enable upload; without them the
+script just writes locally, which is enough for testing.
 
-    R2_ACCOUNT_ID
-    R2_ACCESS_KEY_ID
-    R2_SECRET_ACCESS_KEY
-    R2_BUCKET_NAME
+    AZURE_STORAGE_CONNECTION_STRING
+    AZURE_STORAGE_CONTAINER
 
 Also implements the incremental-load check from the Orchestration rail:
 before pulling a table, it checks that table's `Modified` timestamp
@@ -92,10 +89,8 @@ TABLES = {
 LANDING_ZONE = "./landing_zone"
 STATE_FILE = "./pipeline_state.json"
 
-R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID")
-R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
-R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
-R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+AZURE_STORAGE_CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER")
 
 
 def load_state() -> dict:
@@ -143,23 +138,19 @@ def fetch_table(table_id: str) -> list:
     return cbsodata.get_data(table_id, filters=period_filter)
 
 
-def upload_to_r2(local_path: str, key: str) -> bool:
-    """Uploads a landed file to Cloudflare R2. No-ops if R2 isn't configured."""
-    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
-        print("  R2 not configured (env vars missing) -- leaving file local only.")
+def upload_to_blob(local_path: str, key: str) -> bool:
+    """Uploads a landed file to Azure Blob Storage. No-ops if Azure isn't configured."""
+    if not all([AZURE_STORAGE_CONNECTION_STRING, AZURE_STORAGE_CONTAINER]):
+        print("  Azure Blob Storage not configured (env vars missing) -- leaving file local only.")
         return False
 
-    import boto3
+    from azure.storage.blob import BlobServiceClient
 
-    client = boto3.client(
-        "s3",
-        endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-        region_name="auto",
-    )
-    client.upload_file(local_path, R2_BUCKET_NAME, key)
-    print(f"  Uploaded to R2: s3://{R2_BUCKET_NAME}/{key}")
+    service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+    container_client = service_client.get_container_client(AZURE_STORAGE_CONTAINER)
+    with open(local_path, "rb") as data:
+        container_client.upload_blob(name=key, data=data, overwrite=True)
+    print(f"  Uploaded to Azure Blob: {AZURE_STORAGE_CONTAINER}/{key}")
     return True
 
 
@@ -195,7 +186,7 @@ def pull_one_table(table_id: str, description: str, state: dict) -> bool:
         )
     print(f"  Landed raw data at {out_path}")
 
-    upload_to_r2(out_path, f"landing_zone/{filename}")
+    upload_to_blob(out_path, f"landing_zone/{filename}")
 
     state[table_id] = current_modified
     return True
