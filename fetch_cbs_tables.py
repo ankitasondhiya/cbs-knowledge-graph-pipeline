@@ -1,13 +1,21 @@
 """
 Stage 1 of the CBS -> Knowledge Graph pipeline: Extraction Worker.
 
-Pulls a curated set of CBS StatLine tables -- neighbourhood demographics
-plus business/enterprise (B2B-relevant) tables -- and lands each one
-untouched in a "raw landing zone", exactly the Ingestion stage from the
-breadboard. Scope is all of the Netherlands (no region filter). Tables
-that carry a time dimension ("Perioden") are fetched for their latest
-period only -- history accumulates naturally across runs via the
-timestamped files instead of re-pulling decades of quarters every time.
+Pulls EVERY table currently published in the CBS StatLine open-data
+catalog and lands each one untouched in a "raw landing zone", exactly
+the Ingestion stage from the breadboard. This is the full, unfiltered
+catalog (cbsodata.get_table_list()) -- no curated shortlist, no B2B/
+business-only filter, no topic filter of any kind. That's a deliberate
+choice for the RAW LAYER ONLY: everything CBS publishes lands here so
+nothing is thrown away before anyone's decided they don't need it.
+Filtering by relevance still happens downstream, in transform/run_transform.py
+(--scope poc) and load/run_load.py (--tables), which is where it belongs --
+this stage's only job is faithful, complete ingestion.
+
+Scope is all of the Netherlands (no region filter). Tables that carry a
+time dimension ("Perioden") are fetched for their latest period only --
+history accumulates naturally across runs via the timestamped files
+instead of re-pulling decades of quarters every time.
 
 The landing zone lives in Azure Blob Storage, not git -- these files are
 too large and too frequent to version-control sanely. Set these env vars
@@ -23,6 +31,19 @@ against the last timestamp we successfully pulled for it, and skips that
 table if nothing changed on CBS's side. Each table is tracked
 independently, so one table changing doesn't force a re-pull of the rest.
 
+A note on runtime: the CBS catalog has several thousand tables. A single
+GitHub Actions job is hard-capped at 6 hours, which is very unlikely to
+be enough to land every table on the FIRST run. That's fine by design --
+progress (pipeline_state.json) is saved after every single table, not
+just at the end, so a run that gets cut off (timeout, cancelled, failed)
+picks up exactly where it left off on the next scheduled run instead of
+starting over. Expect the first full backfill to take several days'
+worth of daily runs before "No tables changed since last run" actually
+means the whole catalog is landed. A single table failing to fetch
+(malformed metadata, a transient CBS-side error, etc.) is logged and
+skipped rather than aborting the whole run -- it's retried automatically
+next time since it's never marked as pulled.
+
 Requirements:
     pip install -r requirements.txt
 
@@ -37,60 +58,31 @@ from datetime import datetime, timezone
 
 import cbsodata
 
-# Curated CBS tables. Add/remove entries here to change what gets pulled --
-# nothing else in this script needs to know about specific tables.
-TABLES = {
-    "86165NED": "Kerncijfers wijken en buurten (neighbourhood demographics)",
-    "81589NED": "Bedrijven; bedrijfstak (business counts by industry)",
-    "81588NED": "Bedrijven; bedrijfsgrootte en rechtsvorm (size & legal form)",
-    "83148NED": "Bedrijven; oprichtingen (business starts)",
-    "83149NED": "Bedrijven; opheffingen (business closures)",
-    "83147NED": "Bedrijven; fusies en overnames (mergers & acquisitions)",
-    "83827NED": "Groothandelsbedrijven; omzet (wholesale turnover -- core B2B trade)",
-    "85828NED": "Handel en diensten; omzet en productie (trade & services turnover, incl. zakelijke dienstverlening via its SBI branch dimension)",
-    "85958NED": "Invoer en uitvoer volgens eigendomsoverdracht (international trade in goods, headline)",
-    "84765NED": "Internationale handel; invoer en uitvoer van diensten naar land (international trade in services, by country -- direct B2B)",
-    "81578NED": "Vestigingen van bedrijven; bedrijfstak, regio (business establishments by sector & region)",
-    "83631NED": "Vestigingen van bedrijven; oprichtingen, bedrijfstak, regio (regional business openings)",
-    "83635NED": "Vestigingen van bedrijven; opheffingen, bedrijfstak, regio (regional business closures)",
-    # SBI 2025 -- CBS's new industry classification, replacing SBI 2008.
-    # Added ALONGSIDE the SBI 2008 tables above (not replacing them): CBS
-    # itself is still mid-transition, and the transform stage already
-    # recognizes both schemes' branch field and merges matching top-level
-    # industry labels onto the same graph nodes (see glossary.py).
-    "86280NED": "Bedrijven; bedrijfstak (SBI 2025) (business counts by industry -- SBI 2025 successor to 81589NED)",
-    "86281NED": "Bedrijven; bedrijfsgrootte en rechtsvorm (SBI 2025) (size & legal form -- SBI 2025 successor to 81588NED)",
-    "86282NED": "Bedrijven; opheffingen, bedrijfsgrootte, rechtsvorm, bedrijfstak (SBI 2025) (business closures -- SBI 2025 successor to 83149NED)",
-    # Bankruptcies -- a more standard, legally-defined "business distress"
-    # signal than opheffingen (closures), which includes voluntary exits too.
-    "82242NED": "Faillissementen; kerncijfers (bankruptcies -- headline figures)",
-    "82522NED": "Faillissementen; bedrijven en instellingen, regio (bankruptcies by region)",
-    "82244NED": "Faillissementen; bedrijven en instellingen, SBI 2008 (bankruptcies by industry sector)",
-    # Business cycle survey (Conjunctuurenquête) -- forward-looking sentiment,
-    # not just historical counts.
-    "85610NED": "Conjunctuurenquête Nederland; regio (business cycle survey by region)",
-    "85609NED": "Conjunctuurenquête Nederland; bedrijfstakken (SBI 2008) (business cycle survey by industry)",
-    "85611NED": "Conjunctuurenquête Nederland; bedrijfsgrootte, bedrijfstakken (SBI 2008) (business cycle survey by size & industry)",
-    # Entrepreneur confidence -- a leading indicator, distinct from the
-    # historical/structural tables above.
-    "85612NED": "Ondernemersvertrouwen; bedrijfstakken (SBI 2008) (entrepreneur confidence by industry)",
-    "85614NED": "Ondernemersvertrouwen; regio (entrepreneur confidence by region)",
-    # Financial performance by region & size -- not represented anywhere
-    # else in this table set.
-    "86413NED": "Bedrijfsleven; financiële gegevens, regio, bedrijfsgrootte (business financial data by region & size)",
-    # Foreign-owned businesses in NL -- an internationalization angle
-    # distinct from the trade tables above.
-    "85821NED": "Buitenlandse zeggenschap bedrijven in Nederland; kerncijfers, bedrijfstak (foreign-controlled businesses in NL, by industry)",
-    # Producer/industry sentiment -- narrower than Conjunctuurenquête,
-    # industry-only.
-    "81234ned": "Producentenvertrouwen; stemmingsindicator van de industrie, bedrijfstak (producer confidence, by industry)",
-}
-
 LANDING_ZONE = "./landing_zone"
 STATE_FILE = "./pipeline_state.json"
 
 AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
 AZURE_STORAGE_CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER")
+
+
+def load_full_table_catalog() -> dict:
+    """
+    Returns {table_id: title} for EVERY table currently published in the
+    CBS StatLine open-data catalog -- not a curated shortlist. Uses
+    cbsodata.get_table_list(), which hits ODataCatalog/Tables once (no
+    per-table cost yet). Falls back to the table's own Identifier as the
+    description if a title is missing for some reason, so nothing in the
+    catalog is ever silently skipped for lack of a pretty name.
+    """
+    catalog = cbsodata.get_table_list()
+    tables = {}
+    for entry in catalog:
+        table_id = entry.get("Identifier")
+        if not table_id:
+            continue
+        title = entry.get("Title") or entry.get("ShortTitle") or table_id
+        tables[table_id] = title
+    return tables
 
 
 def load_state() -> dict:
@@ -196,14 +188,30 @@ def main():
     os.makedirs(LANDING_ZONE, exist_ok=True)
     state = load_state()
 
+    print("Fetching the full CBS StatLine table catalog (every published table, no topic filter)...")
+    tables = load_full_table_catalog()
+    print(f"Catalog has {len(tables)} table(s). Checking each for changes...")
+
     any_changed = False
-    for table_id, description in TABLES.items():
-        if pull_one_table(table_id, description, state):
-            any_changed = True
-        # Persist state after each table so a later failure doesn't
-        # forget the tables that already succeeded this run.
+    failed = []
+    for i, (table_id, description) in enumerate(tables.items(), start=1):
+        print(f"[{i}/{len(tables)}]", end=" ")
+        try:
+            if pull_one_table(table_id, description, state):
+                any_changed = True
+        except Exception as e:
+            # One malformed/unreachable table should never abort a run
+            # that's landing thousands of others. It's simply never
+            # marked as pulled, so the next run retries it automatically.
+            print(f"  ERROR pulling {table_id}: {e} -- skipping, will retry next run.")
+            failed.append(table_id)
+        # Persist state after each table so a later failure (or a job
+        # timeout partway through thousands of tables) doesn't forget the
+        # tables that already succeeded this run.
         save_state(state)
 
+    if failed:
+        print(f"\n{len(failed)} table(s) failed this run and will be retried automatically next run: {failed}")
     if not any_changed:
         print("No tables changed since last run -- incremental load working as intended.")
 

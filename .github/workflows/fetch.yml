@@ -15,6 +15,14 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    # Now landing the FULL CBS catalog (several thousand tables), not a
+    # curated shortlist -- a first backfill run realistically won't finish
+    # in one job. 360 is the hard cap GitHub allows on hosted runners; this
+    # just makes that explicit instead of relying on the (same) default.
+    # A run that hits this timeout is safe to just let happen: progress is
+    # saved to pipeline_state.json after every table, so tomorrow's
+    # scheduled run continues from wherever this one got cut off.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +37,11 @@ jobs:
         env:
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+          # Same fix as transform.yml/load.yml -- without this, print()
+          # progress lines can sit buffered for a long time on a run that's
+          # checking thousands of tables, looking identical to "stuck" in
+          # the Actions log even though it's working fine underneath.
+          PYTHONUNBUFFERED: "1"
         run: python fetch_cbs_tables.py
 
       - name: Commit updated pipeline state
