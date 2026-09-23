@@ -111,31 +111,30 @@ SCOPE_TABLES = {
     # DataProperties -- 59 measure columns, 18,495 rows spanning national
     # (NL00) / municipality (GM...) / district (WK...) / neighbourhood
     # (BU...) levels. Loaded in full that's ~18,495 x 59 x 3 relationships
-    # (dataset + variable + region links) -- roughly 3.2 million,
-    # nowhere close to fitting Free tier even with headroom to spare on
-    # every other table. Keeps every municipality + the national total
-    # (a genuine nationwide comparison, ~343 rows) plus the full
-    # Buurt -> Wijk -> Gemeente breakdown for one flagship city, so the
-    # region-hierarchy demo query in load/README.md still has real data
-    # to show rather than dropping neighbourhood granularity entirely.
+    # (dataset + variable + region links) -- roughly 3.2 million, nowhere
+    # close to fitting Free tier even with headroom to spare on every other
+    # table. TIGHTENED 2026-09-23 (Aura Free hit 399,716/400,000 -- 99.9%
+    # full -- on the previous scope): now keeps every municipality + the
+    # national total ONLY (~343 rows, a genuine nationwide comparison --
+    # this is the actual granularity the regional KPIs operate at). The
+    # Buurt -> Wijk -> Gemeente breakdown for a flagship city has been
+    # dropped entirely -- it was never KPI data, just a nicety for the
+    # region-hierarchy demo query in load/README.md. Re-add
+    # FLAGSHIP_GEMEENTE_CODES below once you're on a paid tier and have
+    # headroom for it again.
     "86165NED": lambda row: _keep_demographics_subset(row),
 }
-
-FLAGSHIP_GEMEENTE_CODES = {"0363"}  # Amsterdam -- extend this set to add more cities' full neighbourhood hierarchy, watching the relationship budget as you go
 
 
 def _keep_demographics_subset(row: dict) -> bool:
     code = row.get("Codering_3")
     if not code:
         return False
-    if code.startswith("NL") or code.startswith("GM"):
-        return True  # every municipality + the national total
-    if code.startswith("WK") or code.startswith("BU"):
-        # WK/BU codes embed their gemeente's code right after the prefix
-        # (see rdf_mapper.py's region_type_and_parent) -- only keep
-        # district/neighbourhood rows belonging to a flagship city.
-        return code[2:6] in FLAGSHIP_GEMEENTE_CODES
-    return False
+    # NL = national total, GM = municipality -- the actual granularity
+    # the regional KPIs (Addressable Market Size, Business Density) use.
+    # WK (district) / BU (neighbourhood) rows are dropped entirely now --
+    # see the SCOPE_TABLES comment above.
+    return code.startswith("NL") or code.startswith("GM")
 
 
 def apply_scope(rows: list, table_id: str, scope: str | None) -> list:
