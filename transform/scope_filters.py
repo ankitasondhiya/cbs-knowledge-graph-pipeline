@@ -87,13 +87,18 @@ SCOPE_TABLES = {
     # SBI 2025 tables: 86280NED is the direct successor to 81589NED (same
     # "Bedrijven; bedrijfstak" shape, branch-only dimension), so it almost
     # certainly has the same many-hundred-branch row-count problem --
-    # scoped preemptively on that basis. 86281NED/86282NED/86285NED/
-    # 86341NED/86342NED are NOT listed yet -- their real row counts
-    # haven't been checked against actual landed data, so they pass
-    # through untouched under --scope poc until confirmed one way or the
-    # other (same principle as 83827NED earlier: don't scope a table
-    # whose real volume hasn't actually been checked).
+    # scoped preemptively on that basis. 86285NED (fast-growers, swapped in
+    # 2026-09-23 for retired 48051NED) confirmed via real DataProperties to
+    # have the exact same shape -- a single BedrijfstakkenBranchesSBI2025
+    # dimension at full SBI 2025 granularity -- so it's scoped on the same
+    # basis (hit in practice: 401,298/400,000 on Aura Free with it
+    # unscoped). 86281NED/86282NED/86341NED/86342NED are still NOT listed --
+    # their real row counts haven't been checked against actual landed
+    # data, so they pass through untouched under --scope poc until
+    # confirmed one way or the other (same principle as 83827NED earlier:
+    # don't scope a table whose real volume hasn't actually been checked).
     "86280NED": _keep_top_level_branch,
+    "86285NED": _keep_top_level_branch,
     # Conjunctuurenquête (business cycle survey) tables: checked their real
     # DataProperties metadata -- 85609NED has 145 measure columns per row
     # (far more than any other table here), branch-dimensioned across
