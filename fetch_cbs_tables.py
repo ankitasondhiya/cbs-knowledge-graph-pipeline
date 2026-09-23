@@ -31,6 +31,18 @@ against the last timestamp we successfully pulled for it, and skips that
 table if nothing changed on CBS's side. Each table is tracked
 independently, so one table changing doesn't force a re-pull of the rest.
 
+Pull order is PRIORITIZED, not catalog order: IMPORTANT_TABLES (the same
+31 business/B2B + KPI-gap-analysis tables transform/run_transform.py
+actually processes) are pulled first, so the tables that matter for the
+KPI work land within the first few minutes of a run instead of waiting
+for the full ~1,250-table catalog to be worked through alphabetically/
+by-catalog-order. Everything else follows after, in whatever order the
+catalog returned it. IMPORTANT_TABLES is duplicated here (not imported)
+from transform/run_transform.py's copy on purpose -- fetch's
+requirements.txt deliberately stays light (no rdflib/pyshacl), and
+transform's own imports assume it's run from inside transform/. Keep the
+two lists in sync by hand if you change one.
+
 A note on runtime: the CBS catalog has several thousand tables. A single
 GitHub Actions job is hard-capped at 6 hours, which is very unlikely to
 be enough to land every table on the FIRST run. That's fine by design --
@@ -63,6 +75,19 @@ STATE_FILE = "./pipeline_state.json"
 
 AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
 AZURE_STORAGE_CONTAINER = os.environ.get("AZURE_STORAGE_CONTAINER")
+
+# Kept in sync by hand with transform/run_transform.py's IMPORTANT_TABLES --
+# see this file's module docstring for why it's duplicated rather than
+# imported. These are pulled FIRST, before the rest of the catalog.
+IMPORTANT_TABLES = {
+    "86165NED", "81589NED", "81588NED", "83148NED", "83149NED", "83147NED",
+    "83827NED", "85828NED", "85958NED", "84765NED", "81578NED", "83631NED",
+    "83635NED", "86280NED", "86281NED", "86282NED", "82242NED", "82522NED",
+    "82244NED", "85610NED", "85609NED", "85611NED", "85612NED", "85614NED",
+    "86413NED", "85821NED", "81234ned",
+    # -- added to close KPI gap-analysis findings --
+    "86119NED", "80567NED", "84466NED", "48051NED",
+}
 
 
 def load_full_table_catalog() -> dict:
@@ -184,6 +209,18 @@ def pull_one_table(table_id: str, description: str, state: dict) -> bool:
     return True
 
 
+def _priority_ordered_ids(tables: dict) -> list:
+    """IMPORTANT_TABLES first (that are actually in the live catalog),
+    then every other table in the catalog's own order."""
+    priority = [t for t in IMPORTANT_TABLES if t in tables]
+    missing_from_catalog = sorted(IMPORTANT_TABLES - set(priority))
+    if missing_from_catalog:
+        print(f"NOTE: {len(missing_from_catalog)} IMPORTANT_TABLES id(s) not found in the live "
+              f"catalog right now (retired/renamed on CBS's side?): {missing_from_catalog}")
+    rest = [t for t in tables if t not in IMPORTANT_TABLES]
+    return priority + rest
+
+
 def main():
     os.makedirs(LANDING_ZONE, exist_ok=True)
     state = load_state()
@@ -192,10 +229,16 @@ def main():
     tables = load_full_table_catalog()
     print(f"Catalog has {len(tables)} table(s). Checking each for changes...")
 
+    ordered_ids = _priority_ordered_ids(tables)
+    num_priority = sum(1 for t in ordered_ids if t in IMPORTANT_TABLES)
+    print(f"Pull order: {num_priority} IMPORTANT_TABLES first, then {len(ordered_ids) - num_priority} "
+          f"remaining catalog table(s).")
+
     any_changed = False
     failed = []
-    for i, (table_id, description) in enumerate(tables.items(), start=1):
-        print(f"[{i}/{len(tables)}]", end=" ")
+    for i, table_id in enumerate(ordered_ids, start=1):
+        description = tables[table_id]
+        print(f"[{i}/{len(ordered_ids)}]", end=" ")
         try:
             if pull_one_table(table_id, description, state):
                 any_changed = True
