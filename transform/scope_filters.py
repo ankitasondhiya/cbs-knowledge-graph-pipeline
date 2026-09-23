@@ -112,6 +112,23 @@ SCOPE_TABLES = {
     # NOT listed -- their real volume is small enough not to need it.
     "85609NED": _keep_top_level_branch,
     "85611NED": _keep_top_level_branch,
+    # KPI gap-analysis tables (added 2026-09): checked their real
+    # DataProperties metadata. 84466NED (Zelfstandigen; inkomen, vermogen,
+    # kenmerken -- Succession Pressure Index) is branch-dimensioned
+    # (BedrijfstakkenBranchesSBI2008) AND multiplies further across
+    # TypeZelfstandige x Geslacht x Kenmerken x Perioden -- confirmed in
+    # practice to blow well past 625k+ triples for this table alone (Aura
+    # Free hit 401,412/400,000 mid-load on it, 2026-09-23). 86119NED
+    # (digital foundation / AI adoption survey -- Digital Foundation Gap +
+    # AI Depth Ratio KPIs) is branch- AND company-size-dimensioned with
+    # 229 measure columns per row, by far the largest measure count of any
+    # table here -- scoped preemptively on that basis, same principle as
+    # 85609NED above. 80567NED (Vacatures; vacaturegraad -- Labour Scarcity
+    # Pressure) is also branch-dimensioned but has only 1 measure column
+    # (Vacaturegraad_1) -- left unscoped, same reasoning as
+    # 85612NED/85614NED/81234ned above.
+    "84466NED": _keep_top_level_branch,
+    "86119NED": _keep_top_level_branch,
     # 86165NED (neighbourhood demographics): confirmed against real CBS
     # DataProperties -- 59 measure columns, 18,495 rows spanning national
     # (NL00) / municipality (GM...) / district (WK...) / neighbourhood
