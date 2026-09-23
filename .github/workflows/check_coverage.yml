@@ -1,0 +1,32 @@
+name: Check KPI/B2B table coverage
+
+# Manual-only -- run this any time you want to know whether the tables
+# Transform & Validate actually needs (IMPORTANT_TABLES in
+# transform/run_transform.py) have landed yet in the Azure Blob raw
+# landing zone. Useful while fetch_cbs_tables.py's full-catalog pull is
+# still working its way through ~1,250+ tables over multiple days.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r transform/requirements.txt
+
+      - name: Check table coverage
+        working-directory: transform
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_CONTAINER: ${{ secrets.AZURE_STORAGE_CONTAINER }}
+        run: python check_coverage.py
