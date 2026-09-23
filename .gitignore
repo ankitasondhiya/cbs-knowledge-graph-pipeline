@@ -4,3 +4,6 @@ __pycache__/
 
 # Raw data lives in Azure Blob Storage, not git -- too large/frequent to version here.
 landing_zone/
+
+# Local test output from `python run_transform.py --local` -- scratch, not real data.
+transform/validated_output/
