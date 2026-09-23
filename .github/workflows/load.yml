@@ -40,9 +40,13 @@ jobs:
     runs-on: ubuntu-latest
     # Only proceed if this was triggered manually, or the transform run it's
     # reacting to actually succeeded -- no point loading after a
-    # failed/partial transform. The automatic path (workflow_run) always
-    # loads the full, unscoped dataset -- --scope poc is only ever a
-    # deliberate manual choice, same as transform.yml.
+    # failed/partial transform. TEMPORARY (while on Neo4j Aura Free): the
+    # automatic path (workflow_run) now also forces --scope poc below --
+    # the full, unscoped dataset overruns Aura Free's 400k relationship cap
+    # (hit in practice on 2026-09-23: 84466NED's batch alone would have
+    # pushed it to 401321). Revert the workflow_run branch in the ARGS logic
+    # once you're on a paid tier -- a manual workflow_dispatch run can
+    # already choose full scope any time by leaving scope blank.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -69,7 +73,10 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           ARGS=""
-          if [ "${{ github.event.inputs.scope }}" = "poc" ]; then
+          # TEMPORARY: force poc scope on the automatic (workflow_run) path --
+          # see comment above the job's `if:` condition. Manual dispatch runs
+          # still respect whatever the scope input says.
+          if [ "${{ github.event_name }}" = "workflow_run" ] || [ "${{ github.event.inputs.scope }}" = "poc" ]; then
             ARGS="$ARGS --scope poc"
           fi
           if [ -n "${{ github.event.inputs.tables }}" ]; then
