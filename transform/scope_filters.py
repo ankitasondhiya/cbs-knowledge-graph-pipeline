@@ -129,6 +129,46 @@ SCOPE_TABLES = {
     # 85612NED/85614NED/81234ned above.
     "84466NED": _keep_top_level_branch,
     "86119NED": _keep_top_level_branch,
+    # Full audit of every still-unchecked IMPORTANT_TABLES entry (2026-09-23,
+    # after 84466NED/86119NED forced a 3rd cap hit) -- checked each one's real
+    # DataProperties AND, for the branch-dimensioned ones, the actual
+    # BedrijfstakkenBranchesSBI* category list (not just measure count) to
+    # rule out the 83827NED-style exception (branch field present but CBS
+    # only ever reports it at a coarse division level, where a top-level
+    # filter would silently delete every row).
+    # 81588NED (Bedrijven; bedrijfsgrootte en rechtsvorm, 32 measures) and its
+    # SBI2025 successor 86281NED (21 measures): confirmed ~130-150 branch
+    # codes at full granularity, real top-level rows present -- scoped.
+    "81588NED": _keep_top_level_branch,
+    "86281NED": _keep_top_level_branch,
+    # 83148NED (business starts) and 83149NED (business closures), plus their
+    # SBI2025 successor 86282NED: confirmed ~130-180 branch codes at full
+    # granularity -- scoped.
+    "83148NED": _keep_top_level_branch,
+    "83149NED": _keep_top_level_branch,
+    "86282NED": _keep_top_level_branch,
+    # 85828NED (Handel en diensten; omzet en productie, 23 measures):
+    # confirmed 74 branch codes with real top-level rows present (e.g. "G
+    # Handel") -- unlike 83827NED's coarse-only exception, this one behaves
+    # normally -- scoped.
+    "85828NED": _keep_top_level_branch,
+    # 82244NED (Faillissementen; SBI 2008): TypeGefailleerde + branch, only 1
+    # measure but branch-dimensioned at full granularity -- scoped for
+    # consistency (cheap insurance, low cost either way given 1 measure).
+    "82244NED": _keep_top_level_branch,
+    # 85821NED (Buitenlandse zeggenschap bedrijven in Nederland): branch AND
+    # LandVanZeggenschap (country of control) dimensions, 12 measures --
+    # applying the branch-level trim here only narrows ONE of its two
+    # multiplying dimensions (LandVanZeggenschap has no scoping predicate
+    # yet -- different field name than 84765NED's "Landen"). If a future
+    # load still overflows and the log points at this table, that's the
+    # next place to add a country-of-control filter, not guessed now.
+    "85821NED": _keep_top_level_branch,
+    # Checked and confirmed FINE unscoped (real DataProperties, low
+    # multiplier -- same reasoning as 85610NED/85612NED/85614NED/81234ned):
+    # 82242NED (TypeGefailleerde only, 1 measure, no branch/region),
+    # 82522NED (TypeGefailleerde + RegioS, 1 measure),
+    # 86413NED (Bedrijfsgrootte + RegioS, 2 measures).
     # 86165NED (neighbourhood demographics): confirmed against real CBS
     # DataProperties -- 59 measure columns, 18,495 rows spanning national
     # (NL00) / municipality (GM...) / district (WK...) / neighbourhood
