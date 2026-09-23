@@ -79,7 +79,7 @@ BATCH_SIZE = 2000  # rows per batch -- keeps memory bounded and progress visible
 #   86119NED - ICT-gebruik bij bedrijven                         (KPI 2: Digital Foundation Gap, KPI 3: AI Depth Ratio)
 #   80567NED - Vacatures; vacaturegraad naar SBI 2008              (KPI 5: Labour Scarcity Pressure)
 #   84466NED - Zelfstandigen; inkomen, vermogen, kenmerken         (KPI 4: Succession Pressure Index)
-#   48051NED - Bedrijven; bedrijfstak, groeicategorie, leeftijd    (KPI 4: Succession Pressure Index)
+#   86285NED - Bedrijven; snelle groeiers, bedrijfsgrootte, bedrijfstak (SBI 2025)  (KPI 4: Succession Pressure Index -- swapped in for retired 48051NED; live but drops the firm-age dimension, adds size/legal-form instead)
 IMPORTANT_TABLES = {
     # -- original curated business/enterprise + neighbourhood demographics set --
     "86165NED",  # Kerncijfers wijken en buurten (neighbourhood demographics)
@@ -113,7 +113,7 @@ IMPORTANT_TABLES = {
     "86119NED",
     "80567NED",
     "84466NED",
-    "48051NED",
+    "86285NED",  # swapped in for retired 48051NED -- see comment above
 }
 
 

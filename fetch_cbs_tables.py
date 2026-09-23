@@ -86,7 +86,10 @@ IMPORTANT_TABLES = {
     "82244NED", "85610NED", "85609NED", "85611NED", "85612NED", "85614NED",
     "86413NED", "85821NED", "81234ned",
     # -- added to close KPI gap-analysis findings --
-    "86119NED", "80567NED", "84466NED", "48051NED",
+    "86119NED", "80567NED", "84466NED",
+    "86285NED",  # swapped in for retired 48051NED (confirmed 404 on CBS's OData API,
+                 # not a listing-sync gap) -- live successor for the growth-category
+                 # signal, but drops the firm-age dimension in favour of size/legal-form
 }
 
 
@@ -214,8 +217,9 @@ def _resolve_missing_important_tables(tables: dict) -> None:
     Some IMPORTANT_TABLES ids don't show up in cbsodata.get_table_list()'s
     catalog feed even though the table itself is real and live -- CBS's
     catalog listing and a specific table's own OData endpoint aren't
-    always perfectly in sync (seen in practice with 48051NED/80567NED,
-    both independently confirmed live via CBS's own site). Rather than
+    always perfectly in sync (seen in practice with 80567NED, confirmed
+    live via CBS's own site -- 48051NED turned out to be a genuine 404,
+    since replaced in IMPORTANT_TABLES by 86285NED). Rather than
     silently skip a table just because the CATALOG doesn't mention it,
     probe each missing one directly via its own TableInfos metadata --
     if that succeeds, the table is real and gets added to `tables` (with
