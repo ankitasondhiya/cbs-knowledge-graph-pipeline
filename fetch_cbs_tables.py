@@ -209,14 +209,46 @@ def pull_one_table(table_id: str, description: str, state: dict) -> bool:
     return True
 
 
+def _resolve_missing_important_tables(tables: dict) -> None:
+    """
+    Some IMPORTANT_TABLES ids don't show up in cbsodata.get_table_list()'s
+    catalog feed even though the table itself is real and live -- CBS's
+    catalog listing and a specific table's own OData endpoint aren't
+    always perfectly in sync (seen in practice with 48051NED/80567NED,
+    both independently confirmed live via CBS's own site). Rather than
+    silently skip a table just because the CATALOG doesn't mention it,
+    probe each missing one directly via its own TableInfos metadata --
+    if that succeeds, the table is real and gets added to `tables` (with
+    its real title) so it flows through the normal pull path below. Only
+    a table that fails this direct probe too is actually treated as gone.
+    Mutates `tables` in place.
+    """
+    missing = sorted(t for t in IMPORTANT_TABLES if t not in tables)
+    if not missing:
+        return
+    print(f"NOTE: {len(missing)} IMPORTANT_TABLES id(s) not in the catalog listing -- "
+          f"probing each directly before giving up on it: {missing}")
+    still_missing = []
+    for table_id in missing:
+        try:
+            info = cbsodata.get_meta(table_id, "TableInfos")
+            title = info[0].get("Title") or info[0].get("ShortTitle") or table_id
+            tables[table_id] = title
+            print(f"  {table_id}: found via direct probe (title: {title!r}) -- added back in.")
+        except Exception as e:
+            still_missing.append(table_id)
+            print(f"  {table_id}: direct probe failed too ({e}) -- genuinely unavailable right now, skipping this run.")
+    if still_missing:
+        print(f"NOTE: {len(still_missing)} IMPORTANT_TABLES id(s) truly unavailable this run "
+              f"(retired/renamed on CBS's side?): {still_missing}")
+
+
 def _priority_ordered_ids(tables: dict) -> list:
-    """IMPORTANT_TABLES first (that are actually in the live catalog),
-    then every other table in the catalog's own order."""
+    """IMPORTANT_TABLES first (that are actually in the live catalog, after
+    the direct-probe fallback above has had a chance to add back any that
+    the catalog listing alone missed), then every other table in the
+    catalog's own order."""
     priority = [t for t in IMPORTANT_TABLES if t in tables]
-    missing_from_catalog = sorted(IMPORTANT_TABLES - set(priority))
-    if missing_from_catalog:
-        print(f"NOTE: {len(missing_from_catalog)} IMPORTANT_TABLES id(s) not found in the live "
-              f"catalog right now (retired/renamed on CBS's side?): {missing_from_catalog}")
     rest = [t for t in tables if t not in IMPORTANT_TABLES]
     return priority + rest
 
@@ -228,6 +260,8 @@ def main():
     print("Fetching the full CBS StatLine table catalog (every published table, no topic filter)...")
     tables = load_full_table_catalog()
     print(f"Catalog has {len(tables)} table(s). Checking each for changes...")
+
+    _resolve_missing_important_tables(tables)
 
     ordered_ids = _priority_ordered_ids(tables)
     num_priority = sum(1 for t in ordered_ids if t in IMPORTANT_TABLES)

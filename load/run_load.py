@@ -105,6 +105,14 @@ PROP_PREDICATES = {
     PROV + "generatedAtTime": "generatedAt",
     EXO + "sourcePulledAt": "sourcePulledAt",
     EXO + "period": "period",
+    # New: any DIMENSION_FIELDS entry in glossary.py marked literal:True
+    # lands here as a plain Observation property (see rdf_mapper.py's
+    # generic literal_props handling). Marges/Seizoencorrectie are the
+    # first two beyond Perioden -- raw CBS values, not yet boolean-
+    # verified (see glossary.py's comment on both). Add more here any
+    # time glossary.py grows another literal-flagged field.
+    EXO + "marginType": "marginType",
+    EXO + "seasonalAdjustment": "seasonalAdjustment",
 }
 
 REL_PREDICATES = {

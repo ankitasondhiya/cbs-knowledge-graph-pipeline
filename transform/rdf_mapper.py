@@ -22,6 +22,14 @@ derived purely from the code structure -- see region_type_and_parent().
 RegioS on the business tables is a DIFFERENT, unrelated classification
 (national/foreign/unclassified) and is deliberately kept separate --
 see the note in glossary.py.
+
+Any DIMENSION_FIELDS entry marked literal:True (Perioden, Marges,
+Seizoencorrectie, ...) is stored as a plain property directly on the
+Observation node, keyed by its short_name -- not as its own linked node.
+That's the right shape for row-level metadata like period or seasonal-
+adjustment status: nobody browses "all Observations tagged Q3", the way
+they'd browse "all Observations about G Handel". Add more literal
+DIMENSION_FIELDS entries any time without touching this file.
 """
 
 import re
@@ -171,7 +179,7 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
     for row in rows:
         # --- resolve this row's dimension links first ---
         dim_links = {}  # predicate -> URIRef, collected before building observations
-        period_literal = None
+        literal_props = {}  # short_name -> raw value, written directly onto the Observation
         region_node = None
 
         for field, value in row.items():
@@ -195,7 +203,11 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 if code:
                     region_node = add_region(g, code, value)
             elif info.get("literal"):
-                period_literal = value.strip() if isinstance(value, str) else value
+                # Generic: ANY literal-flagged field (Perioden, Marges,
+                # Seizoencorrectie, ...) becomes a property on the
+                # Observation keyed by its short_name -- see glossary.py
+                # for what's currently flagged this way.
+                literal_props[info["short_name"]] = value.strip() if isinstance(value, str) else value
             elif not info.get("skip"):
                 dim_links[info["predicate"]] = add_dimension_value(g, info, value)
 
@@ -225,8 +237,8 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
 
             if region_node is not None:
                 g.add((obs_uri, EXO.region, region_node))
-            if period_literal is not None:
-                g.add((obs_uri, EXO.period, Literal(str(period_literal))))
+            for short_name, literal_value in literal_props.items():
+                g.add((obs_uri, EXO[short_name], Literal(str(literal_value))))
             for predicate, node in dim_links.items():
                 g.add((obs_uri, EXO[predicate], node))
 

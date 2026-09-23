@@ -69,14 +69,28 @@ DIMENSION_FIELDS = {
     "Landen": {"short_name": "country", "class": "Country", "predicate": "country"},
     "InEnUitvoer": {"short_name": "trade_direction", "class": "TradeDirection", "predicate": "tradeDirection"},
     # New dimension fields seen on the bankruptcy/survey tables added for
-    # the broader B2B set. Skipped (not modeled as their own node type)
-    # rather than guessed at -- they're secondary breakdowns, not central
-    # to the industry/region story these tables are being added for, and
-    # can be promoted to real dimension nodes later if they turn out to
-    # matter once real data is in.
-    "TypeGefailleerde": {"short_name": "bankruptcy_party_type", "skip": True},  # 82242NED/82522NED/82244NED: company vs. sole proprietor etc.
-    "Marges": {"short_name": "margin_type", "skip": True},  # survey tables (Conjunctuurenquête, Ondernemersvertrouwen, Producentenvertrouwen): seasonally-adjusted margin variant
-    "Seizoencorrectie": {"short_name": "seasonal_adjustment", "skip": True},  # same survey tables: raw vs. seasonally-corrected series
+    # the broader B2B set.
+    "TypeGefailleerde": {"short_name": "bankruptcy_party_type", "skip": True},  # 82242NED/82522NED/82244NED: company vs. sole proprietor etc. -- still skipped, secondary breakdown, not central to the industry/region story these tables were added for.
+    # Marges and Seizoencorrectie used to be skipped entirely (silently
+    # dropped) -- promoted to literal properties on every Observation
+    # instead, closing the "status/seasonal-adjustment flag" gap flagged
+    # in the KPI gap analysis. This matters most for the survey tables
+    # (85610NED/85609NED/85611NED/85612NED/85614NED/81234ned) and for
+    # 80567NED's vacancy rate, which the KPI doc explicitly warned is NOT
+    # seasonally adjusted -- without this flag surviving into the graph, a
+    # naive quarter-over-quarter comparison downstream would look like a
+    # real market shift when it might just be seasonal noise.
+    #
+    # Stored as the RAW CBS value (whatever string Seizoencorrectie/Marges
+    # actually contains for a given row), not pre-interpreted into a clean
+    # boolean -- the exact encoding (e.g. "Gecorrigeerde cijfers" vs a
+    # numeric code) hasn't been confirmed against real landed rows for
+    # these tables yet. Once they've landed, check a real sample and
+    # tighten this into a proper seasonallyAdjusted: true/false if the
+    # encoding turns out to be a clean two-value field -- don't guess it
+    # here first.
+    "Marges": {"short_name": "marginType", "literal": True},  # survey tables (Conjunctuurenquête, Ondernemersvertrouwen, Producentenvertrouwen): margin variant, raw CBS value
+    "Seizoencorrectie": {"short_name": "seasonalAdjustment", "literal": True},  # same survey tables + 80567NED-style series: raw CBS value, not yet boolean-verified
 }
 
 GLOSSARY = {
