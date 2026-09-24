@@ -1191,7 +1191,7 @@ const KPI_DEFINITIONS = [
              WHERE o.sourceTable IN ['cbs:81589NED', 'cbs:86280NED']
              WITH b, o ORDER BY o.period DESC
              WITH b, collect(o)[0] AS latest
-             RETURN b.prefLabel AS label, latest.value AS value
+             RETURN b.prefLabelNl AS label, latest.value AS value
              ORDER BY value DESC LIMIT 21`
   },
   {
@@ -1200,9 +1200,9 @@ const KPI_DEFINITIONS = [
     tables: "86119NED (ICT-gebruik bij bedrijven)",
     valueLabel: "% not yet adopted",
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
-             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabel CONTAINS 'ERP' OR c.prefLabel CONTAINS 'cloud' OR c.label CONTAINS 'ERP' OR c.label CONTAINS 'cloud')
+             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabelNl CONTAINS 'ERP' OR c.prefLabelNl CONTAINS 'cloud')
              WITH b, avg(o.value) AS adoption
-             RETURN b.prefLabel AS label, round(100 - adoption) AS value
+             RETURN b.prefLabelNl AS label, round(100 - adoption) AS value
              ORDER BY value DESC LIMIT 21`
   },
   {
@@ -1211,9 +1211,9 @@ const KPI_DEFINITIONS = [
     tables: "86119NED (ICT-gebruik bij bedrijven)",
     valueLabel: "% using AI",
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
-             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabel CONTAINS 'kunstmatige intelligentie' OR c.prefLabel CONTAINS 'AI' OR c.label CONTAINS 'AI')
+             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabelNl CONTAINS 'kunstmatige intelligentie' OR c.prefLabelNl CONTAINS 'AI')
              WITH b, avg(o.value) AS value
-             RETURN b.prefLabel AS label, round(value) AS value
+             RETURN b.prefLabelNl AS label, round(value) AS value
              ORDER BY value DESC LIMIT 21`
   },
   {
@@ -1224,7 +1224,7 @@ const KPI_DEFINITIONS = [
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
              WHERE o.sourceTable = 'cbs:84466NED'
              WITH b, count(o) AS value
-             RETURN b.prefLabel AS label, value
+             RETURN b.prefLabelNl AS label, value
              ORDER BY value DESC LIMIT 21`
   },
   {
@@ -1236,7 +1236,7 @@ const KPI_DEFINITIONS = [
              WHERE o.sourceTable = 'cbs:80567NED'
              WITH b, o ORDER BY o.period DESC
              WITH b, collect(o)[0] AS latest
-             RETURN b.prefLabel AS label, latest.value AS value
+             RETURN b.prefLabelNl AS label, latest.value AS value
              ORDER BY value DESC LIMIT 21`
   },
   {
@@ -1247,7 +1247,7 @@ const KPI_DEFINITIONS = [
     cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region:Gemeente)
              WHERE o.sourceTable = 'cbs:81578NED'
              WITH r, sum(o.value) AS value
-             RETURN r.prefLabel AS label, value
+             RETURN r.prefLabelNl AS label, value
              ORDER BY value DESC LIMIT 20`
   },
   {
@@ -1259,7 +1259,7 @@ const KPI_DEFINITIONS = [
              WHERE o.sourceTable = 'cbs:83631NED'
              WITH r, o ORDER BY o.period DESC
              WITH r, collect(o)[0] AS latest
-             RETURN r.prefLabel AS label, latest.value AS value
+             RETURN r.prefLabelNl AS label, latest.value AS value
              ORDER BY value DESC LIMIT 20`
   },
   {
@@ -1271,7 +1271,7 @@ const KPI_DEFINITIONS = [
              WHERE o.sourceTable IN ['cbs:85610NED', 'cbs:85614NED']
              WITH r, o ORDER BY o.period DESC
              WITH r, collect(o)[0] AS latest
-             RETURN r.prefLabel AS label, latest.value AS value
+             RETURN r.prefLabelNl AS label, latest.value AS value
              ORDER BY value DESC LIMIT 20`
   },
   {
@@ -1281,10 +1281,10 @@ const KPI_DEFINITIONS = [
     valueLabel: "businesses per 1,000 residents",
     cypher: `MATCH (r:Region:Gemeente)<-[:ABOUT_REGION]-(ob:Observation {sourceTable: 'cbs:81578NED'})
              MATCH (r)<-[:ABOUT_REGION]-(op:Observation {sourceTable: 'cbs:86165NED'})-[:HAS_VARIABLE]->(c:Concept)
-             WHERE c.prefLabel CONTAINS 'inwoners' OR c.label CONTAINS 'inwoners'
+             WHERE c.prefLabelNl CONTAINS 'inwoners'
              WITH r, sum(ob.value) AS businesses, avg(op.value) AS population
              WHERE population > 0
-             RETURN r.prefLabel AS label, round(1000.0 * businesses / population, 2) AS value
+             RETURN r.prefLabelNl AS label, round(1000.0 * businesses / population, 2) AS value
              ORDER BY value DESC LIMIT 20`
   },
 ];
