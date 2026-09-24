@@ -70,6 +70,28 @@
   #chartTable { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 12.5px; max-width: 480px; }
   #chartTable th, #chartTable td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #eee; }
   #chartTable th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  /* KPI dashboard -- same overlay pattern as #chartView (see the #network
+     comment: never display:none the canvas itself). One card per KPI,
+     each with a "Run" button so the 9 queries fire on demand rather than
+     all at once -- kinder to Aura Free's query budget and to whoever's
+     just browsing the cards without wanting to run all 9. */
+  #kpiView { position: absolute; inset: 0; z-index: 9; padding: 22px 28px; overflow-y: auto; background: var(--bg); display: none; }
+  #kpiView h2 { font-size: 15px; margin: 0 0 4px 0; }
+  #kpiIntro { font-size: 12.5px; color: var(--muted); max-width: 720px; margin-bottom: 18px; line-height: 1.5; }
+  #kpiGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+  .kpi-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi-card .kpi-num { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi-card h3 { font-size: 13.5px; margin: 2px 0 6px 0; }
+  .kpi-card .kpi-blurb { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 4px; }
+  .kpi-card .kpi-tables { font-size: 10.5px; color: #999; margin-bottom: 10px; }
+  .kpi-card .kpi-tables code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+  .kpi-card button.kpi-run { font-size: 11.5px; padding: 5px 10px; }
+  .kpi-card .kpi-status { font-size: 11px; color: var(--muted); margin-top: 6px; min-height: 14px; }
+  .kpi-card .kpi-status.err { color: #c0392b; }
+  .kpi-card svg.kpi-chart { width: 100%; margin-top: 8px; display: none; }
+  .kpi-card table.kpi-table { display: none; width: 100%; font-size: 11px; margin-top: 6px; border-collapse: collapse; }
+  .kpi-card table.kpi-table td { padding: 3px 4px; border-bottom: 1px solid #f0f0f0; }
+  .kpi-card table.kpi-table td:last-child { text-align: right; color: #555; }
   main { flex: 1; display: flex; overflow: hidden; }
   #mainArea { flex: 1; position: relative; overflow: hidden; }
   /* #network is ALWAYS present/visible (never display:none) -- vis-network
@@ -144,6 +166,7 @@
   <div id="viewToggle">
     <button id="viewGraphBtn" class="active">🕸 Graph view</button>
     <button id="viewChartBtn">📊 Chart view</button>
+    <button id="viewKpiBtn">📈 KPI dashboard</button>
   </div>
 </header>
 
@@ -184,6 +207,18 @@
     <div id="chartHint" class="hint">Connect above to see this chart.</div>
     <svg id="barChart" width="100%"></svg>
     <table id="chartTable"><thead><tr><th>Type</th><th>Count</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div id="kpiView">
+    <h2>Business KPI dashboard</h2>
+    <div id="kpiIntro">
+      9 KPIs built from the tables actually landed in this graph -- 5 industry-level, 4 regional.
+      Each card runs a real Cypher query against your Aura instance. First pass: queries group by
+      the confirmed schema (Observation / Branch / Region / Concept, see load/README.md) and, where
+      a table has more than one measure, match on the Dutch concept label CBS itself uses --
+      re-check these against your <code>--scope poc</code> data once loaded, since not every
+      concept is curated in glossary.py yet.
+    </div>
+    <div id="kpiGrid"></div>
   </div>
  </div>
   <div id="chartTooltip"></div>
@@ -1089,6 +1124,7 @@ cy.on('dbltap', 'node', async (evt) => {
 // ---- Chart view: a plain "nodes by type" bar chart, alongside the graph ----
 document.getElementById('viewGraphBtn').onclick = () => switchView('graph');
 document.getElementById('viewChartBtn').onclick = () => switchView('chart');
+document.getElementById('viewKpiBtn').onclick = () => switchView('kpi');
 document.getElementById('refreshChartBtn').onclick = () => renderBarChart(true);
 
 let chartMode = 'canvas'; // 'canvas' = whatever's loaded via Browse/Filter right now; 'db' = whole-database totals
@@ -1122,13 +1158,236 @@ cy.on('add remove', () => {
 function switchView(v) {
   document.getElementById('viewGraphBtn').classList.toggle('active', v === 'graph');
   document.getElementById('viewChartBtn').classList.toggle('active', v === 'chart');
-  // #network is NEVER hidden -- Chart view just overlays on top of it with
-  // its own opaque background (position:absolute, higher z-index). See the
-  // CSS comment on #network for why: vis-network breaks permanently if its
-  // container is ever set display:none.
+  document.getElementById('viewKpiBtn').classList.toggle('active', v === 'kpi');
+  // #network is NEVER hidden -- Chart/KPI views just overlay on top of it
+  // with their own opaque background (position:absolute, higher z-index).
+  // See the CSS comment on #network for why: vis-network breaks
+  // permanently if its container is ever set display:none.
   document.getElementById('chartView').style.display = v === 'chart' ? 'block' : 'none';
+  document.getElementById('kpiView').style.display = v === 'kpi' ? 'block' : 'none';
   chartViewActive = (v === 'chart');
   if (v === 'chart') renderBarChart(false);
+  if (v === 'kpi' && !kpiCardsRendered) renderKpiCards();
+}
+
+// ---- KPI dashboard: 9 business KPIs (5 industry-level, 4 regional) built
+// straight from the confirmed schema in load/run_load.py (TYPE_LABELS /
+// REL_PREDICATES) -- node labels and relationship types below are
+// guaranteed correct since they come from that fixed mapping, not from
+// data. Where a source table has more than one measure and the concept
+// isn't curated in glossary.py yet, the query matches on the literal
+// Dutch label/topic text CBS itself publishes for that measure (confirmed
+// against real CBS DataProperties metadata while building this) --
+// documented per KPI below. Re-verify these once the graph actually holds
+// data: a concept's exact prefLabel can differ slightly from the raw CBS
+// title if rdf_mapper.py normalizes it.
+const KPI_DEFINITIONS = [
+  {
+    n: 1, title: "Addressable Enterprise Count",
+    blurb: "Total businesses per industry -- the base population any of the other KPIs narrows down from.",
+    tables: "81589NED / 86280NED (SBI 2025)",
+    valueLabel: "businesses",
+    cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
+             WHERE o.sourceTable IN ['cbs:81589NED', 'cbs:86280NED']
+             WITH b, o ORDER BY o.period DESC
+             WITH b, collect(o)[0] AS latest
+             RETURN b.prefLabel AS label, latest.value AS value
+             ORDER BY value DESC LIMIT 21`
+  },
+  {
+    n: 2, title: "Digital Foundation Gap",
+    blurb: "Share of businesses per industry NOT yet using ERP/cloud software -- the modernization gap.",
+    tables: "86119NED (ICT-gebruik bij bedrijven)",
+    valueLabel: "% not yet adopted",
+    cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
+             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabel CONTAINS 'ERP' OR c.prefLabel CONTAINS 'cloud' OR c.label CONTAINS 'ERP' OR c.label CONTAINS 'cloud')
+             WITH b, avg(o.value) AS adoption
+             RETURN b.prefLabel AS label, round(100 - adoption) AS value
+             ORDER BY value DESC LIMIT 21`
+  },
+  {
+    n: 3, title: "AI Depth Ratio",
+    blurb: "Share of businesses per industry already using AI -- where AI positioning lands vs. where it's still a hard sell.",
+    tables: "86119NED (ICT-gebruik bij bedrijven)",
+    valueLabel: "% using AI",
+    cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
+             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabel CONTAINS 'kunstmatige intelligentie' OR c.prefLabel CONTAINS 'AI' OR c.label CONTAINS 'AI')
+             WITH b, avg(o.value) AS value
+             RETURN b.prefLabel AS label, round(value) AS value
+             ORDER BY value DESC LIMIT 21`
+  },
+  {
+    n: 4, title: "Succession Pressure Index",
+    blurb: "Self-employed population per industry -- a proxy for owner-operator succession risk (refine once real data confirms an age/tenure field).",
+    tables: "84466NED / 86285NED",
+    valueLabel: "self-employed observations",
+    cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
+             WHERE o.sourceTable = 'cbs:84466NED'
+             WITH b, count(o) AS value
+             RETURN b.prefLabel AS label, value
+             ORDER BY value DESC LIMIT 21`
+  },
+  {
+    n: 5, title: "Labour Scarcity Pressure",
+    blurb: "Vacancy rate per industry (vacancies per 1,000 jobs) -- highest-pressure sectors for hiring/staffing pitches.",
+    tables: "80567NED (Vacatures; vacaturegraad)",
+    valueLabel: "vacancy rate",
+    cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
+             WHERE o.sourceTable = 'cbs:80567NED'
+             WITH b, o ORDER BY o.period DESC
+             WITH b, collect(o)[0] AS latest
+             RETURN b.prefLabel AS label, latest.value AS value
+             ORDER BY value DESC LIMIT 21`
+  },
+  {
+    n: 6, title: "Addressable Market Size by Region",
+    blurb: "Total business establishments per municipality -- where the addressable market is concentrated geographically.",
+    tables: "81578NED (Bedrijfsvestigingen naar sector en regio)",
+    valueLabel: "establishments",
+    cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region:Gemeente)
+             WHERE o.sourceTable = 'cbs:81578NED'
+             WITH r, sum(o.value) AS value
+             RETURN r.prefLabel AS label, value
+             ORDER BY value DESC LIMIT 20`
+  },
+  {
+    n: 7, title: "Regional Business Formation Momentum",
+    blurb: "New business openings per municipality -- first pass on formation momentum (net of closures/bankruptcies is the next iteration).",
+    tables: "83631NED (openings) -- 83635NED/82522NED to net out once region granularity is confirmed shared",
+    valueLabel: "openings",
+    cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region)
+             WHERE o.sourceTable = 'cbs:83631NED'
+             WITH r, o ORDER BY o.period DESC
+             WITH r, collect(o)[0] AS latest
+             RETURN r.prefLabel AS label, latest.value AS value
+             ORDER BY value DESC LIMIT 20`
+  },
+  {
+    n: 8, title: "Regional Business Confidence",
+    blurb: "Business/entrepreneur confidence index per region -- where sentiment is highest vs. lowest right now.",
+    tables: "85610NED / 85614NED (Conjunctuurenquete / Ondernemersvertrouwen, regio)",
+    valueLabel: "confidence index",
+    cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region)
+             WHERE o.sourceTable IN ['cbs:85610NED', 'cbs:85614NED']
+             WITH r, o ORDER BY o.period DESC
+             WITH r, collect(o)[0] AS latest
+             RETURN r.prefLabel AS label, latest.value AS value
+             ORDER BY value DESC LIMIT 20`
+  },
+  {
+    n: 9, title: "Regional Business Density",
+    blurb: "Businesses per capita per municipality -- density-adjusted opportunity, not just raw counts.",
+    tables: "81578NED (businesses) + 86165NED (population)",
+    valueLabel: "businesses per 1,000 residents",
+    cypher: `MATCH (r:Region:Gemeente)<-[:ABOUT_REGION]-(ob:Observation {sourceTable: 'cbs:81578NED'})
+             MATCH (r)<-[:ABOUT_REGION]-(op:Observation {sourceTable: 'cbs:86165NED'})-[:HAS_VARIABLE]->(c:Concept)
+             WHERE c.prefLabel CONTAINS 'inwoners' OR c.label CONTAINS 'inwoners'
+             WITH r, sum(ob.value) AS businesses, avg(op.value) AS population
+             WHERE population > 0
+             RETURN r.prefLabel AS label, round(1000.0 * businesses / population, 2) AS value
+             ORDER BY value DESC LIMIT 20`
+  },
+];
+
+let kpiCardsRendered = false;
+
+function renderKpiCards() {
+  const grid = document.getElementById('kpiGrid');
+  grid.innerHTML = '';
+  KPI_DEFINITIONS.forEach(kpi => {
+    const card = document.createElement('div');
+    card.className = 'kpi-card';
+    card.innerHTML = `
+      <div class="kpi-num">KPI ${kpi.n}${kpi.n <= 5 ? ' -- industry' : ' -- regional'}</div>
+      <h3>${kpi.title}</h3>
+      <div class="kpi-blurb">${kpi.blurb}</div>
+      <div class="kpi-tables">Source: <code>${kpi.tables}</code></div>
+      <button class="kpi-run">Run this KPI</button>
+      <div class="kpi-status"></div>
+      <svg class="kpi-chart"></svg>
+      <table class="kpi-table"><tbody></tbody></table>
+    `;
+    card.querySelector('.kpi-run').onclick = () => runKpi(kpi, card);
+    grid.appendChild(card);
+  });
+  kpiCardsRendered = true;
+}
+
+async function runKpi(kpi, card) {
+  const status = card.querySelector('.kpi-status');
+  const svg = card.querySelector('.kpi-chart');
+  const table = card.querySelector('.kpi-table');
+  status.className = 'kpi-status';
+  status.textContent = 'Running against your Aura instance...';
+  if (!driver) { status.className = 'kpi-status err'; status.textContent = 'Connect to Aura above first.'; return; }
+  try {
+    const result = await runQuery(kpi.cypher, {});
+    // Extract the RAW numeric value (Neo4j Integer -> JS number) here,
+    // rather than through formatNeoValue() -- that formats for display
+    // with toLocaleString (adds thousands separators like "12,345"), and
+    // running Number() on THAT string is NaN for anything >= 1000. That
+    // bug silently discarded every KPI whose count was in the thousands
+    // (i.e. most of them) -- keep the raw number for logic, format only
+    // at render time.
+    const rows = result.records
+      .map(rec => {
+        const label = rec.get('label');
+        let value = rec.get('value');
+        if (value && typeof value === 'object' && typeof value.low === 'number') {
+          value = typeof value.toNumber === 'function' ? value.toNumber() : value.low;
+        }
+        return { label, value: typeof value === 'number' ? value : Number(value) };
+      })
+      .filter(r => r.label != null && !Number.isNaN(r.value));
+    if (!rows.length) {
+      status.textContent = 'No data yet for this KPI -- run the load workflow (or wait for it to reach these tables), then try again.';
+      svg.style.display = 'none'; table.style.display = 'none';
+      return;
+    }
+    status.textContent = `${rows.length} rows -- ${kpi.valueLabel}`;
+    drawKpiChart(svg, rows);
+    const tbody = table.querySelector('tbody');
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.label}</td><td>${r.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>`;
+      tbody.appendChild(tr);
+    });
+    svg.style.display = 'block'; table.style.display = 'table';
+  } catch (e) {
+    status.className = 'kpi-status err';
+    status.textContent = 'Query failed: ' + e.message;
+    svg.style.display = 'none'; table.style.display = 'none';
+  }
+}
+
+// Compact horizontal bar chart for one KPI card -- same visual language as
+// the main Chart view's drawBarChart, but a single fixed color (KPI
+// categories are industries/regions, not node types, so the type-color
+// legend from drawBarChart doesn't apply here) and sized to sit inside a
+// card rather than the full page.
+function drawKpiChart(svg, rows) {
+  const top = rows.slice(0, 10); // keep each card readable -- full list is still in the table below
+  const width = Math.max(svg.clientWidth || 320, 280);
+  const rowH = 20, rowGap = 8, leftPad = 130, rightPad = 55, topPad = 6;
+  const max = Math.max(...top.map(r => Number(r.value)), 1);
+  const barMaxW = width - leftPad - rightPad;
+  const height = topPad * 2 + top.length * (rowH + rowGap);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('height', height);
+  let html = `<line x1="${leftPad}" y1="${topPad - 3}" x2="${leftPad}" y2="${height - topPad + 3}" stroke="#ddd" stroke-width="1" />`;
+  top.forEach((r, i) => {
+    const y = topPad + i * (rowH + rowGap);
+    const barW = Math.max(2, (Number(r.value) / max) * barMaxW);
+    const label = String(r.label).length > 22 ? String(r.label).slice(0, 21) + '…' : String(r.label);
+    html += `
+      <g>
+        <text x="${leftPad - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="10.5" fill="#555">${label}</text>
+        <rect x="${leftPad}" y="${y}" width="${barW}" height="${rowH}" rx="3" fill="#2b6cb0" />
+        <text x="${leftPad + barW + 6}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="#333">${Number(r.value).toLocaleString()}</text>
+      </g>`;
+  });
+  svg.innerHTML = html;
 }
 
 // Tallies whatever's actually on the canvas right now, grouped by each
