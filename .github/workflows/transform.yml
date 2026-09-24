@@ -66,4 +66,11 @@ jobs:
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             ARGS="$ARGS --force"
           fi
+          # Print the resolved command so the log itself is proof of which
+          # flags actually ran -- otherwise there's no way to confirm from
+          # the log alone whether --scope poc / --force were really applied
+          # (this bit us in practice: a load kept re-processing stale,
+          # unscoped data because a transform run's force flag wasn't
+          # visibly confirmed).
+          echo "Running: python transform/run_transform.py $ARGS"
           python transform/run_transform.py $ARGS
