@@ -86,6 +86,42 @@ def add_region(g: Graph, code: str, name: str | None = None) -> URIRef:
     return uri
 
 
+# ---------- RegioS municipality rows (81578NED, 83631NED, and other
+# business tables that share the same RegioS field) ----------
+#
+# Confirmed against real landed 81578NED/83631NED rows: RegioS is NOT one
+# clean classification -- it mixes national/foreign aggregate rows (e.g.
+# "Nederland, Buitenland, Niet in te delen", which the original comment
+# above region_type_and_parent was based on) together with REAL regions at
+# several different granularities, distinguished only by a trailing code
+# in parentheses: "Amsterdam (GA)" is the municipality (Gemeente) row,
+# "Amsterdam (SG)" a different (Stadsgewest) grouping, "Gelderland (PV)" a
+# province, "Achterhoek (CR)" a COROP region, and so on. Only the (GA)
+# rows are treated as a real municipality here and linked via
+# EXO.region/ABOUT_REGION, matching the region KPIs' expectations of
+# (:Region:Gemeente) nodes -- everything else (other suffixes, or rows
+# with no recognised suffix) falls straight through to the pre-existing
+# generic RegioCategory/HAS_REGIO_CATEGORY path below, unchanged.
+REGIOS_GEMEENTE_RE = re.compile(r"\s*\(GA\)\s*$")
+
+
+def regios_gemeente_uri(name: str) -> URIRef:
+    return EX[f"region/regios/{slugify(name)}"]
+
+
+def add_regios_gemeente(g: Graph, name: str) -> URIRef:
+    """Adds (idempotently) a Gemeente-typed region node keyed by its plain
+    RegioS name -- no CBS numeric GM code is available from this field, so
+    (unlike add_region) there's no parent-hierarchy linkage, just the node
+    itself, typed so the load layer gives it the same :Region:Gemeente
+    Neo4j labels as a WijkenEnBuurten-derived Gemeente node."""
+    uri = regios_gemeente_uri(name)
+    g.add((uri, RDF.type, EXO.Gemeente))
+    g.add((uri, EXO.regionCode, Literal(name)))
+    g.add((uri, SKOS.prefLabel, Literal(name, lang="nl")))
+    return uri
+
+
 # ---------- generic dimension-value nodes (branch, country, etc.) ----------
 
 def slugify(text: str) -> str:
@@ -202,6 +238,10 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 code = row.get("Codering_3")
                 if code:
                     region_node = add_region(g, code, value)
+            elif field == "RegioS" and isinstance(value, str) and REGIOS_GEMEENTE_RE.search(value):
+                clean_name = REGIOS_GEMEENTE_RE.sub("", value).strip()
+                if clean_name:
+                    region_node = add_regios_gemeente(g, clean_name)
             elif info.get("literal"):
                 # Generic: ANY literal-flagged field (Perioden, Marges,
                 # Seizoencorrectie, ...) becomes a property on the

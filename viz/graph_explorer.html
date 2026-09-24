@@ -92,6 +92,20 @@
   .kpi-card table.kpi-table { display: none; width: 100%; font-size: 11px; margin-top: 6px; border-collapse: collapse; }
   .kpi-card table.kpi-table td { padding: 3px 4px; border-bottom: 1px solid #f0f0f0; }
   .kpi-card table.kpi-table td:last-child { text-align: right; color: #555; }
+  .kpi-card .kpi-actions { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+  .kpi-card button.kpi-toggle-details { font-size: 11px; padding: 5px 10px; background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .kpi-card button.kpi-toggle-details:hover { background: #f5f5f5; }
+  .kpi-card .kpi-details { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .kpi-card .kpi-details-blurb { font-size: 12px; line-height: 1.5; color: #333; margin-bottom: 8px; white-space: pre-line; }
+  .kpi-card .kpi-cypher-block summary { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 4px; }
+  .kpi-card .kpi-cypher-block pre { font-size: 10.5px; background: #f7f7f7; border: 1px solid var(--border); border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre-wrap; margin: 4px 0 8px 0; }
+  .kpi-card button.kpi-diag { font-size: 11px; padding: 5px 10px; background: #fff; border: 1px solid var(--border); color: #555; }
+  .kpi-card button.kpi-diag:hover { background: #f5f5f5; }
+  .kpi-card .kpi-diag-results { margin-top: 8px; font-size: 11px; }
+  .kpi-card .kpi-diag-item { padding: 4px 0; border-bottom: 1px solid #f4f4f4; }
+  .kpi-card .kpi-diag-item .kpi-diag-q { color: #555; }
+  .kpi-card .kpi-diag-item .kpi-diag-a { color: #222; font-weight: 600; margin-left: 6px; }
+  .kpi-card .kpi-diag-samples { color: #777; font-size: 10.5px; margin-top: 2px; word-break: break-word; }
   main { flex: 1; display: flex; overflow: hidden; }
   #mainArea { flex: 1; position: relative; overflow: hidden; }
   /* #network is ALWAYS present/visible (never display:none) -- vis-network
@@ -1187,6 +1201,8 @@ const KPI_DEFINITIONS = [
     blurb: "Total businesses per industry -- the base population any of the other KPIs narrows down from.",
     tables: "81589NED / 86280NED (SBI 2025)",
     valueLabel: "businesses",
+    detail: "Use case: size the addressable market per industry before targeting outreach -- sales/BD uses this to prioritize which SBI sections have the most registered businesses to prospect into first, before spending time on smaller ones.",
+    diag: { tables: ["81589NED", "86280NED"], relType: "HAS_BRANCH", targetLabel: "Branch" },
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
              WHERE o.sourceTable IN ['cbs:81589NED', 'cbs:86280NED']
              WITH b, o ORDER BY o.period DESC
@@ -1199,6 +1215,8 @@ const KPI_DEFINITIONS = [
     blurb: "Share of businesses per industry NOT yet using ERP/cloud software -- the modernization gap.",
     tables: "86119NED (ICT-gebruik bij bedrijven)",
     valueLabel: "% not yet adopted",
+    detail: "Use case: finds industries still running on spreadsheets/paper instead of ERP or cloud systems. The 'modernization gap' is where a software vendor's pitch lands easiest -- the alternative isn't a competitor's product, it's no system at all.\nIf this still shows no data, click Diagnose below: 86119NED's ICT-adoption questions are one of CBS's less-curated tables, so the real Dutch concept label for the ERP/cloud question may use different wording than expected.",
+    diag: { tables: ["86119NED"], relType: "HAS_VARIABLE", targetLabel: "Concept" },
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
              WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabelNl CONTAINS 'ERP' OR c.prefLabelNl CONTAINS 'cloud')
              WITH b, avg(o.value) AS adoption
@@ -1210,8 +1228,10 @@ const KPI_DEFINITIONS = [
     blurb: "Share of businesses per industry already using AI -- where AI positioning lands vs. where it's still a hard sell.",
     tables: "86119NED (ICT-gebruik bij bedrijven)",
     valueLabel: "% using AI",
+    detail: "Use case: the mirror image of KPI 2. Shows which industries already have real AI traction -- an AI vendor can lead with proof/case studies there -- versus which are greenfield, where the pitch has to start with education, not comparison.\nSame data source as KPI 2, so the same diagnostic applies: click Diagnose to see the real Concept labels this table actually has.",
+    diag: { tables: ["86119NED"], relType: "HAS_VARIABLE", targetLabel: "Concept" },
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch), (o)-[:HAS_VARIABLE]->(c:Concept)
-             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabelNl CONTAINS 'kunstmatige intelligentie' OR c.prefLabelNl CONTAINS 'AI')
+             WHERE o.sourceTable = 'cbs:86119NED' AND (c.prefLabelNl CONTAINS 'kunstmatige intelligentie' OR c.prefLabelNl CONTAINS 'A I')
              WITH b, avg(o.value) AS value
              RETURN b.prefLabelNl AS label, round(value) AS value
              ORDER BY value DESC LIMIT 21`
@@ -1221,6 +1241,8 @@ const KPI_DEFINITIONS = [
     blurb: "Self-employed population per industry -- a proxy for owner-operator succession risk (refine once real data confirms an age/tenure field).",
     tables: "84466NED / 86285NED",
     valueLabel: "self-employed observations",
+    detail: "Use case: industries with a high self-employed / owner-operator share carry more succession risk -- relevant for M&A sourcing, succession-planning services, or business-continuity insurance outreach.",
+    diag: { tables: ["84466NED"], relType: "HAS_BRANCH", targetLabel: "Branch" },
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
              WHERE o.sourceTable = 'cbs:84466NED'
              WITH b, count(o) AS value
@@ -1232,6 +1254,8 @@ const KPI_DEFINITIONS = [
     blurb: "Vacancy rate per industry (vacancies per 1,000 jobs) -- highest-pressure sectors for hiring/staffing pitches.",
     tables: "80567NED (Vacatures; vacaturegraad)",
     valueLabel: "vacancy rate",
+    detail: "Use case: industries with the highest vacancy rate are actively short-staffed -- the best targets for staffing agencies, HR tech, or automation vendors solving a labour shortage.",
+    diag: { tables: ["80567NED"], relType: "HAS_BRANCH", targetLabel: "Branch" },
     cypher: `MATCH (o:Observation)-[:HAS_BRANCH]->(b:Branch)
              WHERE o.sourceTable = 'cbs:80567NED'
              WITH b, o ORDER BY o.period DESC
@@ -1244,6 +1268,8 @@ const KPI_DEFINITIONS = [
     blurb: "Total business establishments per municipality -- where the addressable market is concentrated geographically.",
     tables: "81578NED (Bedrijfsvestigingen naar sector en regio)",
     valueLabel: "establishments",
+    detail: "Use case: shows where the addressable market physically concentrates -- which municipalities justify a regional sales rep or local marketing spend versus which are too thin to prioritize.\nIf this shows no data, click Diagnose: the query requires the region node to carry BOTH the :Region and :Gemeente labels -- the diagnostic lists which label combinations 81578NED's regions actually have, in case it's landing as plain :Region (e.g. Wijk/Buurt granularity) instead.",
+    diag: { tables: ["81578NED"], relType: "ABOUT_REGION", targetLabel: "Region" },
     cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region:Gemeente)
              WHERE o.sourceTable = 'cbs:81578NED'
              WITH r, sum(o.value) AS value
@@ -1255,6 +1281,8 @@ const KPI_DEFINITIONS = [
     blurb: "New business openings per municipality -- first pass on formation momentum (net of closures/bankruptcies is the next iteration).",
     tables: "83631NED (openings) -- 83635NED/82522NED to net out once region granularity is confirmed shared",
     valueLabel: "openings",
+    detail: "Use case: municipalities with the most new business formation are where the next wave of prospects is appearing -- useful for getting ahead of competitors by targeting newly formed businesses early, before they've settled on vendors.",
+    diag: { tables: ["83631NED"], relType: "ABOUT_REGION", targetLabel: "Region" },
     cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region)
              WHERE o.sourceTable = 'cbs:83631NED'
              WITH r, o ORDER BY o.period DESC
@@ -1267,6 +1295,8 @@ const KPI_DEFINITIONS = [
     blurb: "Business/entrepreneur confidence index per region -- where sentiment is highest vs. lowest right now.",
     tables: "85610NED / 85614NED (Conjunctuurenquete / Ondernemersvertrouwen, regio)",
     valueLabel: "confidence index",
+    detail: "Use case: regional sentiment is a leading indicator -- pair with KPI 6/7 to decide whether a region's raw size is backed by rising or falling confidence before committing regional investment there.",
+    diag: { tables: ["85610NED", "85614NED"], relType: "ABOUT_REGION", targetLabel: "Region" },
     cypher: `MATCH (o:Observation)-[:ABOUT_REGION]->(r:Region)
              WHERE o.sourceTable IN ['cbs:85610NED', 'cbs:85614NED']
              WITH r, o ORDER BY o.period DESC
@@ -1279,6 +1309,9 @@ const KPI_DEFINITIONS = [
     blurb: "Businesses per capita per municipality -- density-adjusted opportunity, not just raw counts.",
     tables: "81578NED (businesses) + 86165NED (population)",
     valueLabel: "businesses per 1,000 residents",
+    detail: "Use case: raw counts favour big cities by default -- density (businesses per resident) surfaces smaller municipalities punching above their population, which KPI 6 alone would hide.\nThis KPI needs BOTH source tables to have real data for the same region at once, so it's the most likely to come up empty even after KPI 6 works on its own -- Diagnose checks each side separately.",
+    diag: { tables: ["81578NED"], relType: "ABOUT_REGION", targetLabel: "Region" },
+    diag2: { tables: ["86165NED"], relType: "HAS_VARIABLE", targetLabel: "Concept" },
     cypher: `MATCH (r:Region:Gemeente)<-[:ABOUT_REGION]-(ob:Observation {sourceTable: 'cbs:81578NED'})
              MATCH (r)<-[:ABOUT_REGION]-(op:Observation {sourceTable: 'cbs:86165NED'})-[:HAS_VARIABLE]->(c:Concept)
              WHERE c.prefLabelNl CONTAINS 'inwoners'
@@ -1302,12 +1335,29 @@ function renderKpiCards() {
       <h3>${kpi.title}</h3>
       <div class="kpi-blurb">${kpi.blurb}</div>
       <div class="kpi-tables">Source: <code>${kpi.tables}</code></div>
-      <button class="kpi-run">Run this KPI</button>
+      <div class="kpi-actions">
+        <button class="kpi-run">Run this KPI</button>
+        <button class="kpi-toggle-details">&#9656; Details</button>
+      </div>
       <div class="kpi-status"></div>
       <svg class="kpi-chart"></svg>
       <table class="kpi-table"><tbody></tbody></table>
+      <div class="kpi-details" style="display:none">
+        <div class="kpi-details-blurb">${escapeHtml(kpi.detail || '')}</div>
+        <details class="kpi-cypher-block"><summary>Cypher query used</summary><pre><code>${escapeHtml(kpi.cypher)}</code></pre></details>
+        <button class="kpi-diag">Diagnose (why no data?)</button>
+        <div class="kpi-diag-results"></div>
+      </div>
     `;
     card.querySelector('.kpi-run').onclick = () => runKpi(kpi, card);
+    const detailsPanel = card.querySelector('.kpi-details');
+    const toggleBtn = card.querySelector('.kpi-toggle-details');
+    toggleBtn.onclick = () => {
+      const open = detailsPanel.style.display !== 'none';
+      detailsPanel.style.display = open ? 'none' : 'block';
+      toggleBtn.innerHTML = open ? '&#9656; Details' : '&#9662; Details';
+    };
+    card.querySelector('.kpi-diag').onclick = () => diagnoseKpi(kpi, card);
     grid.appendChild(card);
   });
   kpiCardsRendered = true;
@@ -1366,6 +1416,88 @@ async function runKpi(kpi, card) {
 // categories are industries/regions, not node types, so the type-color
 // legend from drawBarChart doesn't apply here) and sized to sit inside a
 // card rather than the full page.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+// Builds a short chain of diagnostic Cypher queries for one KPI's data
+// source, so "No data yet" doesn't leave a dead end -- click Diagnose to
+// see exactly how far the data gets: does the Observation exist at all,
+// does the expected relationship exist, and what do the real connected
+// labels actually say (useful when a KPI filters on a keyword like
+// "ERP"/"AI" and the real CBS label might not literally contain that text).
+function buildDiagCyphers(d) {
+  if (!d) return [];
+  const tables = d.tables.map(t => `'cbs:${t}'`).join(', ');
+  const qs = [];
+  qs.push({
+    label: `Observations with sourceTable in [${d.tables.join(', ')}]`,
+    cypher: `MATCH (o:Observation) WHERE o.sourceTable IN [${tables}] RETURN count(o) AS c`,
+    kind: 'count'
+  });
+  qs.push({
+    label: `...with a :${d.relType} link to :${d.targetLabel}`,
+    cypher: `MATCH (o:Observation)-[:${d.relType}]->(x:${d.targetLabel}) WHERE o.sourceTable IN [${tables}] RETURN count(o) AS c`,
+    kind: 'count'
+  });
+  qs.push({
+    label: `Distinct ${d.targetLabel} labels actually reached (first 60)`,
+    cypher: `MATCH (o:Observation)-[:${d.relType}]->(x:${d.targetLabel}) WHERE o.sourceTable IN [${tables}] RETURN DISTINCT x.prefLabelNl AS label ORDER BY label LIMIT 60`,
+    kind: 'samples'
+  });
+  if (d.targetLabel === 'Region') {
+    qs.push({
+      label: `Region node label combinations reached`,
+      cypher: `MATCH (o:Observation)-[:${d.relType}]->(x:Region) WHERE o.sourceTable IN [${tables}] RETURN DISTINCT labels(x) AS label, count(*) AS c ORDER BY c DESC LIMIT 10`,
+      kind: 'samples'
+    });
+  }
+  return qs;
+}
+
+async function diagnoseKpi(kpi, card) {
+  const btn = card.querySelector('.kpi-diag');
+  const out = card.querySelector('.kpi-diag-results');
+  if (!driver) { out.innerHTML = '<div class="kpi-diag-item"><span class="kpi-diag-q">Connect to Aura above first.</span></div>'; return; }
+  const queries = [...buildDiagCyphers(kpi.diag), ...buildDiagCyphers(kpi.diag2)];
+  if (!queries.length) { out.textContent = 'No diagnostics defined for this KPI.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Diagnosing...';
+  out.innerHTML = '';
+  for (const q of queries) {
+    const item = document.createElement('div');
+    item.className = 'kpi-diag-item';
+    item.innerHTML = `<span class="kpi-diag-q">${escapeHtml(q.label)}</span>`;
+    out.appendChild(item);
+    try {
+      const result = await runQuery(q.cypher, {});
+      if (q.kind === 'count') {
+        const v = result.records.length ? formatNeoValue(result.records[0].get('c')) : '0';
+        const a = document.createElement('span');
+        a.className = 'kpi-diag-a';
+        a.textContent = v;
+        item.appendChild(a);
+      } else {
+        const samples = document.createElement('div');
+        samples.className = 'kpi-diag-samples';
+        samples.textContent = !result.records.length ? '(none found)' : result.records.map(rec => {
+          const label = rec.has('label') ? rec.get('label') : null;
+          const c = rec.has('c') ? formatNeoValue(rec.get('c')) : null;
+          return c != null ? `${label} (${c})` : String(label);
+        }).join('  |  ');
+        item.appendChild(samples);
+      }
+    } catch (e) {
+      const a = document.createElement('span');
+      a.className = 'kpi-diag-a';
+      a.textContent = 'query failed: ' + e.message;
+      item.appendChild(a);
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Diagnose again';
+}
+
 function drawKpiChart(svg, rows) {
   const top = rows.slice(0, 10); // keep each card readable -- full list is still in the table below
   const width = Math.max(svg.clientWidth || 320, 280);
