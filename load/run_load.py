@@ -64,6 +64,18 @@ LOAD_MANIFEST_KEY = "load/_processed_manifest.json"
 
 BATCH_LINES = 5000  # triples per batch -- bounded memory, visible progress on huge files
 
+# Aura Free's HARD cap is exactly 400,000 relationships -- this is set a
+# little under it (not at it) so the budget check below stops BEFORE the
+# wall, not after failing against it. Load repeatedly hit the real cap
+# mid-file and crashed the whole run, losing an otherwise-successful load
+# of everything smaller (2026-09-24) -- this makes the load self-limiting
+# instead: it now always finishes successfully with whatever fits, skips
+# (not crashes on) anything that wouldn't, and reports exactly what got
+# skipped so it's obvious what's missing and why. Raise this once you're
+# on a paid Aura tier -- it's not a real graph-size limit, just this
+# tier's ceiling with headroom.
+MAX_RELATIONSHIPS = 395000
+
 # ---------------------------------------------------------------------------
 # Our fixed RDF vocabulary -> Cypher shape. See rdf_mapper.py for the source
 # of truth these tables mirror.
@@ -272,7 +284,7 @@ def process_lines(lines, acc: BatchAccumulator):
         # new predicate should fail loudly in dry-run rather than here.
 
 
-def load_stream(line_iter, driver, dry_run: bool, source_label: str):
+def load_stream(line_iter, driver, dry_run: bool, source_label: str, budget: dict | None = None):
     total_stats = {"entities": 0, "label_ops": 0, "prop_ops": 0, "rel_ops": 0}
     batch = []
     started = time.monotonic()
@@ -282,27 +294,71 @@ def load_stream(line_iter, driver, dry_run: bool, source_label: str):
         acc = BatchAccumulator()
         process_lines(batch_lines, acc)
         s = acc.stats()
-        for k in total_stats:
-            total_stats[k] += s[k]
-        if not dry_run:
+
+        if dry_run:
+            for k in total_stats:
+                total_stats[k] += s[k]
+            return s, True
+
+        # Budget check BEFORE writing anything -- s['rel_ops'] is the
+        # number of MERGE rows this batch would attempt, which is an
+        # upper bound on new relationships (MERGE dedupes, so the real
+        # number added can only be <= this). Using the upper bound means
+        # we always stop with room to spare rather than risk overshooting
+        # into the same crash this replaces.
+        if budget is not None and s["rel_ops"] > budget["remaining"]:
+            print(f"    SKIPPING rest of {source_label} -- this batch alone "
+                  f"({s['rel_ops']} relationships) would exceed the remaining "
+                  f"budget ({budget['remaining']}/{MAX_RELATIONSHIPS}). "
+                  f"Not marking this file as loaded -- it can be finished "
+                  f"later (paid tier, or after freeing up room).")
+            return s, False
+
+        try:
             with driver.session() as session:
                 session.execute_write(acc.flush)
-        return s
+        except Exception as e:
+            # Safety net for the budget estimate above being wrong in some
+            # edge case (it shouldn't be, given MERGE only ever adds <=
+            # rel_ops -- but a crash here is exactly the failure mode this
+            # whole mechanism exists to prevent, so never let one escape).
+            msg = str(e)
+            if "relationship" in msg.lower() and ("limit" in msg.lower() or "exceed" in msg.lower()):
+                print(f"    SKIPPING rest of {source_label} -- hit Aura's real "
+                      f"relationship cap despite the budget check above "
+                      f"(estimate was off). Not marking this file as loaded.")
+                if budget is not None:
+                    budget["remaining"] = 0
+                return s, False
+            raise
 
+        for k in total_stats:
+            total_stats[k] += s[k]
+        if budget is not None:
+            budget["remaining"] -= s["rel_ops"]
+        return s, True
+
+    file_complete = True
     for line in line_iter:
         batch.append(line)
         processed += 1
         if len(batch) >= BATCH_LINES:
-            flush_batch(batch)
+            _, ok = flush_batch(batch)
             batch = []
+            if not ok:
+                file_complete = False
+                break
             elapsed = time.monotonic() - started
             print(f"    ...{processed} triples processed ({elapsed:.0f}s elapsed)")
-    if batch:
-        flush_batch(batch)
+    if batch and file_complete:
+        _, ok = flush_batch(batch)
+        if not ok:
+            file_complete = False
         elapsed = time.monotonic() - started
-        print(f"    ...{processed} triples processed ({elapsed:.0f}s elapsed) [{source_label} done]")
+        status = "done" if file_complete else "INCOMPLETE -- skipped, see SKIPPING line above"
+        print(f"    ...{processed} triples processed ({elapsed:.0f}s elapsed) [{source_label} {status}]")
 
-    return total_stats
+    return total_stats, file_complete
 
 
 # ---------------------------------------------------------------------------
@@ -365,8 +421,8 @@ def run_azure(dry_run: bool, tables: set | None = None, scope: str | None = None
     # ("foo.poc.nt".endswith(".nt") is also True, so this can't be a
     # plain endswith(".nt") check or a poc run would load full files too.)
     suffix = ".poc.nt" if scope == "poc" else ".nt"
-    keys = [
-        b.name for b in container.list_blobs(name_starts_with=VALIDATED_PREFIX)
+    blobs = [
+        b for b in container.list_blobs(name_starts_with=VALIDATED_PREFIX)
         if b.name.endswith(suffix)
         and (scope == "poc" or not b.name.endswith(".poc.nt"))
         # --force skips the "already processed" check entirely -- needed
@@ -382,29 +438,53 @@ def run_azure(dry_run: bool, tables: set | None = None, scope: str | None = None
         # POC: AuraDB Free caps out at 200k nodes / 400k relationships, and the
         # biggest CBS tables blow past that alone (one node per row x measure
         # field). Load only the small tables until you're on a paid tier.
-        keys = [k for k in keys if os.path.basename(k).split("_")[0] in tables]
+        blobs = [b for b in blobs if os.path.basename(b.name).split("_")[0] in tables]
+    # Smallest file first -- maximizes how many DISTINCT tables (and so how
+    # many KPIs) get real data before the relationship budget below runs
+    # out, instead of one huge table (e.g. 84466NED) eating the whole
+    # budget first and leaving every other KPI empty.
+    blobs.sort(key=lambda b: b.size or 0)
+    keys = [b.name for b in blobs]
     if not keys:
         print("No new validated files to load (after any --tables filter). Neo4j is up to date.")
         return
 
     driver = None if dry_run else get_neo4j_driver()
+    budget = None
     if not dry_run:
         with driver.session() as session:
             session.run(CONSTRAINT_CYPHER)
+            current = session.run("MATCH ()-->() RETURN count(*) AS c").single()["c"]
+        budget = {"remaining": max(0, MAX_RELATIONSHIPS - current)}
+        print(f"Current relationships in Neo4j: {current:,}. Budget for this run: "
+              f"{budget['remaining']:,} (cap {MAX_RELATIONSHIPS:,}).")
 
-    print(f"Found {len(keys)} new validated file(s) to load{' (DRY RUN -- no writes)' if dry_run else ''}.")
+    print(f"Found {len(keys)} new validated file(s) to load{' (DRY RUN -- no writes)' if dry_run else ''}, smallest first.")
+    incomplete = []
     for key in keys:
         print(f"Processing {key} ...")
         text = container.download_blob(key).readall().decode("utf-8")
-        stats = load_stream(text.splitlines(), driver, dry_run, key)
-        print(f"  {stats}")
+        stats, complete = load_stream(text.splitlines(), driver, dry_run, key, budget)
+        print(f"  {stats}{'' if complete else '  (INCOMPLETE -- see SKIPPING line above)'}")
         if not dry_run:
-            processed.add(key)
-            save_manifest(container, processed, manifest_key)
+            if complete:
+                processed.add(key)
+                save_manifest(container, processed, manifest_key)
+            else:
+                incomplete.append(key)
 
     if driver:
         driver.close()
-    print("Done." if not dry_run else "Dry run complete -- nothing was written to Neo4j or the manifest.")
+    if dry_run:
+        print("Dry run complete -- nothing was written to Neo4j or the manifest.")
+    elif incomplete:
+        print(f"Done, with {len(incomplete)}/{len(keys)} file(s) left incomplete (relationship "
+              f"budget ran out): {incomplete}")
+        print("Everything that fit is loaded and safe to use right now. The tables above "
+              "weren't -- upgrade the Aura tier (or free up room) and re-run with --force "
+              "to pick them up; nothing needs to be redone for the tables that already succeeded.")
+    else:
+        print("Done. Every table fit within budget.")
 
 
 def run_local(dry_run: bool, tables: set | None = None, scope: str | None = None):
@@ -427,7 +507,9 @@ def run_local(dry_run: bool, tables: set | None = None, scope: str | None = None
     for fname in files:
         print(f"Processing {fname} ...")
         with open(os.path.join(in_dir, fname), encoding="utf-8") as f:
-            stats = load_stream(f, driver, dry_run, fname)
+            # No budget passed here -- local sample fixtures are tiny by
+            # construction, nowhere near Aura Free's cap.
+            stats, _complete = load_stream(f, driver, dry_run, fname)
         print(f"  {stats}")
 
     if driver:
