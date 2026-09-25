@@ -94,6 +94,9 @@ TYPE_LABELS = {
     EXO + "Wijk": ("Region", "Wijk"),
     EXO + "Buurt": ("Region", "Buurt"),
     EXO + "Region": ("Region",),
+    EXO + "Provincie": ("Region", "Provincie"),
+    EXO + "CoropGebied": ("Region", "CoropGebied"),
+    EXO + "Landsdeel": ("Region", "Landsdeel"),
     QB + "DataSet": ("Dataset",),
     QB + "Observation": ("Observation",),
     SKOS + "Concept": ("Concept",),
@@ -102,6 +105,7 @@ TYPE_LABELS = {
     EXO + "ServiceCategory": ("DimensionValue", "ServiceCategory"),
     EXO + "Country": ("DimensionValue", "Country"),
     EXO + "TradeDirection": ("DimensionValue", "TradeDirection"),
+    EXO + "OtherDimension": ("DimensionValue", "OtherDimension"),
 }
 
 PROP_PREDICATES = {
@@ -125,6 +129,7 @@ PROP_PREDICATES = {
     # time glossary.py grows another literal-flagged field.
     EXO + "marginType": "marginType",
     EXO + "seasonalAdjustment": "seasonalAdjustment",
+    EXO + "dimensionKey": "dimensionKey",
 }
 
 REL_PREDICATES = {
@@ -134,6 +139,7 @@ REL_PREDICATES = {
     EXO + "region": "ABOUT_REGION",
     EXO + "branch": "HAS_BRANCH",
     EXO + "regioCategory": "HAS_REGIO_CATEGORY",
+    EXO + "otherDimension": "HAS_DIMENSION",
     EXO + "serviceCategory": "HAS_SERVICE_CATEGORY",
     EXO + "country": "HAS_COUNTRY",
     EXO + "tradeDirection": "HAS_TRADE_DIRECTION",

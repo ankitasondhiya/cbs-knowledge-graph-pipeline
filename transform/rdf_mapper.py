@@ -70,6 +70,11 @@ def region_type_and_parent(code: str):
 
 
 def add_region(g: Graph, code: str, name: str | None = None) -> URIRef:
+    # CBS pads Codering_3 to a fixed width ("GM0014    "). The URI was
+    # already built from the stripped code, but the regionCode literal was
+    # not -- so SHACL's code pattern rejected EVERY 86165NED batch and the
+    # table never reached Neo4j. Strip once, up front.
+    code = code.strip()
     uri = region_uri(code)
     rdf_type, parent_code = region_type_and_parent(code)
     g.add((uri, RDF.type, rdf_type))
@@ -104,6 +109,25 @@ def add_region(g: Graph, code: str, name: str | None = None) -> URIRef:
 # generic RegioCategory/HAS_REGIO_CATEGORY path below, unchanged.
 REGIOS_GEMEENTE_RE = re.compile(r"\s*\(GA\)\s*$")
 
+# Extension (KPI 7/8 fix): the same RegioS suffix convention also marks
+# provinces (PV), COROP regions (CR) and landsdelen (LD). 83631NED /
+# 83635NED (openings/closures) carry NO (GA) municipality rows at all --
+# only CR/PV/LD -- so without this, regional KPIs on those tables had
+# nothing to join. Each level becomes its own typed :Region node. (SG)
+# stadsgewest and any unrecognised suffix still fall through to the
+# generic RegioCategory path, unchanged.
+REGIOS_LEVEL_RE = re.compile(r"\s*\((PV|CR|LD)\)\s*$")
+REGIOS_LEVEL_CLASS = {"PV": "Provincie", "CR": "CoropGebied", "LD": "Landsdeel"}
+
+
+def add_regios_level_region(g: Graph, name: str, level: str) -> URIRef:
+    cls = REGIOS_LEVEL_CLASS[level]
+    uri = EX[f"region/regios-{level.lower()}/{slugify(name)}"]
+    g.add((uri, RDF.type, EXO[cls]))
+    g.add((uri, EXO.regionCode, Literal(f"RS-{level}:{name}")))
+    g.add((uri, SKOS.prefLabel, Literal(name, lang="nl")))
+    return uri
+
 
 def regios_gemeente_uri(name: str) -> URIRef:
     return EX[f"region/regios/{slugify(name)}"]
@@ -117,7 +141,12 @@ def add_regios_gemeente(g: Graph, name: str) -> URIRef:
     Neo4j labels as a WijkenEnBuurten-derived Gemeente node."""
     uri = regios_gemeente_uri(name)
     g.add((uri, RDF.type, EXO.Gemeente))
-    g.add((uri, EXO.regionCode, Literal(name)))
+    # "RS-GA:<name>" rather than the bare name: shacl_shapes.ttl's
+    # RegionShape only accepted NL/GM/WK/BU codes, so a bare name made the
+    # WHOLE 2,000-row batch fail validation and get silently skipped --
+    # which is why the regional KPIs still had 0 ABOUT_REGION links even
+    # after RegioS linking was added. The shape now accepts this prefix.
+    g.add((uri, EXO.regionCode, Literal(f"RS-GA:{name}")))
     g.add((uri, SKOS.prefLabel, Literal(name, lang="nl")))
     return uri
 
@@ -139,6 +168,8 @@ def add_dimension_value(g: Graph, info: dict, raw_value: str) -> URIRef:
     uri = dimension_value_uri(info["short_name"], raw_value)
     g.add((uri, RDF.type, EXO[info["class"]]))
     g.add((uri, SKOS.prefLabel, Literal(raw_value.strip(), lang="nl")))
+    if info.get("dimension_key"):
+        g.add((uri, EXO.dimensionKey, Literal(info["dimension_key"])))
     return uri
 
 
@@ -214,12 +245,13 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
 
     for row in rows:
         # --- resolve this row's dimension links first ---
-        dim_links = {}  # predicate -> URIRef, collected before building observations
+        dim_links = []  # (predicate, URIRef) pairs -- a list, not a dict, so several
+                        # OtherDimension fields on one row don't overwrite each other
         literal_props = {}  # short_name -> raw value, written directly onto the Observation
         region_node = None
 
         for field, value in row.items():
-            info = dimension_info(field)
+            info = dimension_info(field, value)
             if info is None:
                 continue  # it's a measure, handled below
             if value is None or (isinstance(value, str) and not value.strip()):
@@ -242,6 +274,11 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 clean_name = REGIOS_GEMEENTE_RE.sub("", value).strip()
                 if clean_name:
                     region_node = add_regios_gemeente(g, clean_name)
+            elif field == "RegioS" and isinstance(value, str) and REGIOS_LEVEL_RE.search(value):
+                m = REGIOS_LEVEL_RE.search(value)
+                clean_name = REGIOS_LEVEL_RE.sub("", value).strip()
+                if clean_name:
+                    region_node = add_regios_level_region(g, clean_name, m.group(1))
             elif info.get("literal"):
                 # Generic: ANY literal-flagged field (Perioden, Marges,
                 # Seizoencorrectie, ...) becomes a property on the
@@ -249,13 +286,13 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 # for what's currently flagged this way.
                 literal_props[info["short_name"]] = value.strip() if isinstance(value, str) else value
             elif not info.get("skip"):
-                dim_links[info["predicate"]] = add_dimension_value(g, info, value)
+                dim_links.append((info["predicate"], add_dimension_value(g, info, value)))
 
         # --- one Observation per measure field ---
         for field, value in row.items():
-            if dimension_info(field) is not None:
+            if dimension_info(field, value) is not None:
                 continue
-            if value is None or not isinstance(value, (int, float)):
+            if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
                 continue
 
             concept, entry = add_concept(g, table_id, field)
@@ -279,7 +316,7 @@ def map_rows_to_graph(rows: list, table_id: str, description: str, run_id: str, 
                 g.add((obs_uri, EXO.region, region_node))
             for short_name, literal_value in literal_props.items():
                 g.add((obs_uri, EXO[short_name], Literal(str(literal_value))))
-            for predicate, node in dim_links.items():
+            for predicate, node in dim_links:
                 g.add((obs_uri, EXO[predicate], node))
 
     return g, sorted(unverified_seen)

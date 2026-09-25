@@ -50,7 +50,7 @@ POC_COUNTRIES = {
     "Rusland",             # Russia
 }
 
-BRANCH_FIELDS = ("BedrijfstakkenBranchesSBI2008", "BedrijfstakkenBranchesSBI2025")
+BRANCH_FIELDS = ("BedrijfstakkenBranchesSBI2008", "BedrijfstakkenBranchesSBI2025", "SectorBranchesSIC2008")
 COUNTRY_FIELD = "Landen"
 
 

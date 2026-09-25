@@ -34,6 +34,9 @@ metadata is the only reliable source for what each one means. Left
 entirely to auto-fallback on purpose rather than guessed.
 """
 
+import re
+
+
 # Non-measure columns that classify a row rather than measure something.
 # short_name is what rdf_mapper.py uses to build the predicate/class names.
 DIMENSION_FIELDS = {
@@ -279,9 +282,52 @@ def lookup(table_id: str, cbs_field_name: str):
     return GLOSSARY.get((table_id, cbs_field_name))
 
 
-def dimension_info(cbs_field_name: str):
-    """Returns the DIMENSION_FIELDS entry for a raw field name, or None if it's a measure column."""
-    return DIMENSION_FIELDS.get(cbs_field_name)
+# Branch-field aliases. CBS has used several keys for the same SBI
+# industry dimension over the years -- older labour-market tables such as
+# 80567NED (Vacatures; vacaturegraad) use e.g. "SectorBranchesSIC2008"
+# rather than "BedrijfstakkenBranchesSBI2008". Before this rule existed,
+# any such alias fell through to the "measure" path, and because its
+# value is a string (not a number) it was SILENTLY DROPPED -- which is
+# exactly why KPI 5 showed 48 Observations with 0 HAS_BRANCH links.
+BRANCH_FIELD_RE = re.compile(r"^(BedrijfstakkenBranches|SectorBranches|Bedrijfstakken|BedrijfstakkenSBI)", re.I)
+BRANCH_INFO = {"short_name": "branch", "class": "Branch", "predicate": "branch"}
+
+# CBS convention: measure ("Topic") keys always end in _<number>
+# (Vestigingen_1, AantalInwoners_5); dimension keys never do (RegioS,
+# Perioden, Bedrijfsgrootte, Kenmerken...). Used as a safety net below.
+MEASURE_KEY_RE = re.compile(r"_\d+$")
+
+
+def dimension_info(cbs_field_name: str, value=None):
+    """
+    Returns the dimension descriptor for a raw field name, or None if
+    it's a measure column.
+
+    Resolution order:
+      1. an explicit DIMENSION_FIELDS entry (curated, always wins)
+      2. a known branch-field alias (BRANCH_FIELD_RE)
+      3. SAFETY NET: any un-suffixed key carrying a string value is a CBS
+         dimension we haven't curated yet (e.g. a company-size, age-group
+         or sex breakdown). It becomes a generic :OtherDimension node via
+         HAS_DIMENSION instead of being silently discarded -- the node
+         keeps its raw CBS key in `dimensionKey`, so KPIs can still filter
+         on it (e.g. "only the Totaal member") and it can be promoted to a
+         curated dimension later.
+    """
+    info = DIMENSION_FIELDS.get(cbs_field_name)
+    if info is not None:
+        return info
+    if BRANCH_FIELD_RE.match(cbs_field_name):
+        return BRANCH_INFO
+    if (value is not None and isinstance(value, str)
+            and not MEASURE_KEY_RE.search(cbs_field_name)):
+        return {
+            "short_name": f"dim-{cbs_field_name.lower()}",
+            "class": "OtherDimension",
+            "predicate": "otherDimension",
+            "dimension_key": cbs_field_name,
+        }
+    return None
 
 
 def unmapped_fields(table_id: str, row: dict) -> list:

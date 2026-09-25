@@ -65,8 +65,12 @@ exo:RegionShape
         # guessed. Without it, every batch containing that totals row
         # failed validation entirely, since it appears in nearly every
         # batch of real data.
-        sh:pattern "^(NL|GM|WK|BU)[0-9]{2,8}$" ;
-        sh:message "Region code must be a valid CBS code (NL/GM/WK/BU + digits)." ;
+        # RS-<level>:<name> covers regions derived from the business
+        # tables' RegioS field (81578NED, 83631NED, 83635NED, 85610NED...),
+        # which carry a region NAME plus a level suffix -- (GA) gemeente,
+        # (PV) provincie, (CR) COROP, (LD) landsdeel -- but no numeric code.
+        sh:pattern "^((NL|GM|WK|BU)[0-9]{2,8}|RS-(GA|PV|CR|LD):.+)$" ;
+        sh:message "Region code must be a valid CBS code (NL/GM/WK/BU + digits) or a RegioS-derived RS-<level>:<name> code." ;
     ] .
 
 exo:ConceptShape
