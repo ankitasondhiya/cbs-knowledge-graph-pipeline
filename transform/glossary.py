@@ -289,7 +289,8 @@ def lookup(table_id: str, cbs_field_name: str):
 # any such alias fell through to the "measure" path, and because its
 # value is a string (not a number) it was SILENTLY DROPPED -- which is
 # exactly why KPI 5 showed 48 Observations with 0 HAS_BRANCH links.
-BRANCH_FIELD_RE = re.compile(r"^(BedrijfstakkenBranches|SectorBranches|Bedrijfstakken|BedrijfstakkenSBI)", re.I)
+# "SBI2008"/"SBI2025": confirmed on 80567NED (Vacatures; vacaturegraad), 2026-09-25.
+BRANCH_FIELD_RE = re.compile(r"^(BedrijfstakkenBranches|SectorBranches|Bedrijfstakken|BedrijfstakkenSBI|SBI\d{4}$)", re.I)
 BRANCH_INFO = {"short_name": "branch", "class": "Branch", "predicate": "branch"}
 
 # CBS convention: measure ("Topic") keys always end in _<number>

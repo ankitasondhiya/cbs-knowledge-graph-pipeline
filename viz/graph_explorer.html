@@ -1346,11 +1346,11 @@ const KPI_DEFINITIONS = [
     blurb: "Vacancy rate per industry (open vacancies per 1,000 jobs, latest quarter) -- where hiring pain is most acute.",
     tables: "80567NED (Vacatures; vacaturegraad naar SBI 2008)",
     valueLabel: "vacancies per 1,000 jobs",
-    detail: "Business use: staffing agencies, HR-tech, recruitment marketing and automation vendors -- a high vacancy rate means the buyer is already feeling the problem you solve.\nWhy it was empty: 80567NED names its industry column differently from the other CBS tables, so the transform didn't recognise it as the industry dimension and silently dropped it -- 48 Observations, 0 industry links. Fixed in transform/glossary.py (branch-field aliases + a catch-all that keeps any unrecognised breakdown). Re-run transform + load for 80567NED to populate.\nHow it's computed: latest quarter only; industry groups (e.g. 'G-I Handel, vervoer en horeca') and sections are both shown, the all-industries total is excluded. The rate is a ratio, so group and section rows don't double-count.",
+    detail: "Business use: staffing agencies, HR-tech, recruitment marketing and automation vendors -- a high vacancy rate means the buyer is already feeling the problem you solve.\nWhy it was empty: 80567NED calls its industry column plain 'SBI2008' instead of 'BedrijfstakkenBranchesSBI2008', so the transform originally dropped it. It is now kept (as a HAS_DIMENSION breakdown with dimensionKey 'SBI2008', and from the next transform run as a proper :Branch link).\nHow it's computed: latest quarter only; industry groups (e.g. 'G-I Handel, vervoer en horeca') and sections are both shown, the all-industries total is excluded. The rate is a ratio, so group and section rows don't double-count.",
     diag: { tables: ["80567NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["vacature"] },
     cypher: `${kpiLatest(["80567NED"])}
              MATCH (o)-[:HAS_BRANCH|HAS_DIMENSION]->(b)
-             WHERE (b:Branch OR b.dimensionKey =~ '(?i).*(sector|branche|bedrijfsta).*')
+             WHERE (b:Branch OR b.dimensionKey =~ '(?i).*(sector|branche|bedrijfsta|sbi).*')
                AND b.prefLabelNl =~ '^[A-Z](-[A-Z])? .*' AND NOT b.prefLabelNl STARTS WITH 'A-U'
              RETURN b.prefLabelNl AS label, round(avg(o.value), 1) AS value
              ORDER BY value DESC`
