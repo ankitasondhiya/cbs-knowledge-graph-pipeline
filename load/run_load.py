@@ -445,6 +445,23 @@ def run_azure(dry_run: bool, tables: set | None = None, scope: str | None = None
         # biggest CBS tables blow past that alone (one node per row x measure
         # field). Load only the small tables until you're on a paid tier.
         blobs = [b for b in blobs if os.path.basename(b.name).split("_")[0] in tables]
+    # Latest snapshot per table only. fetch_cbs_tables.py lands a FULL copy
+    # of a table on every pull (e.g. 4 x 81578NED, 4 x 80567NED), and each
+    # becomes its own validated file with its own Observation URIs --
+    # loading all of them multiplied every table's size by its number of
+    # pulls, which is most of why a 10-table KPI dry run came to ~1.7M
+    # relationships. Older snapshots are superseded, so only the newest
+    # "<table>_<timestamp>" file per table is loaded. Filenames sort by
+    # timestamp (20260924T081421Z), so max() by name is the newest.
+    latest_by_table = {}
+    for b in blobs:
+        tid = os.path.basename(b.name).split("_")[0]
+        if tid not in latest_by_table or b.name > latest_by_table[tid].name:
+            latest_by_table[tid] = b
+    skipped_old = len(blobs) - len(latest_by_table)
+    if skipped_old:
+        print(f"Skipping {skipped_old} older snapshot file(s) -- loading only the newest file per table.")
+    blobs = list(latest_by_table.values())
     # Smallest file first -- maximizes how many DISTINCT tables (and so how
     # many KPIs) get real data before the relationship budget below runs
     # out, instead of one huge table (e.g. 84466NED) eating the whole
