@@ -284,7 +284,8 @@ def _trim_measures(rows: list, table_id: str) -> list:
 # query will select.
 _TOTAL_RE = re.compile(r"^(totaal|alle |nederland|mannen en vrouwen|beide geslachten)", re.I)
 POC_BREAKDOWN = {
-    "84466NED": re.compile(r"(55 tot 65|55 jaar|65 jaar)", re.I),
+    # 55-65 and 65+ bands only -- NOT "15 tot 55 jaar" (which also contains "55 jaar").
+    "84466NED": re.compile(r"(55 tot 65|55 jaar of ouder|55 jaar en ouder|65 jaar of ouder|65 jaar en ouder|65 tot \d+ jaar)", re.I),
 }
 _NON_BREAKDOWN_KEYS = {"ID", "Perioden", "Marges", "Seizoencorrectie"} | set(BRANCH_FIELDS)
 
@@ -296,21 +297,54 @@ def _trim_breakdowns(rows: list, table_id: str) -> list:
     dims = sorted({k for r in rows[:500] for k, v in r.items()
                    if k not in _NON_BREAKDOWN_KEYS and isinstance(v, str)
                    and not _MEASURE_KEY_RE.search(k)})
-    # Always log the real members -- this is how a wrong guess gets fixed.
+    measures = sorted({k for r in rows[:200] for k, v in r.items()
+                       if _MEASURE_KEY_RE.search(k) and isinstance(v, (int, float))})
+
+    # Pick each breakdown's "all members" value. First choice: a label that
+    # reads like a total (Totaal..., Alle ...). CBS doesn't always word it
+    # that way (the first real run of this on 84466NED found none), so the
+    # fallback is structural: in a CBS cube the all-members value is the
+    # aggregate of the others, so it has the LARGEST summed measure of any
+    # value in that breakdown. This works regardless of wording.
+    total_of = {}
     for d in dims:
-        vals = sorted({str(r.get(d)).strip() for r in rows if r.get(d) is not None})
-        print(f"  {table_id} breakdown {d}: {len(vals)} values, e.g. {vals[:12]}")
+        sums = {}
+        for r in rows:
+            v = r.get(d)
+            if v is None:
+                continue
+            v = str(v).strip()
+            sums[v] = sums.get(v, 0.0) + sum(float(r[m]) for m in measures if isinstance(r.get(m), (int, float)))
+        labelled = [v for v in sums if _TOTAL_RE.match(v)]
+        total_of[d] = labelled[0] if labelled else (max(sums, key=sums.get) if sums else None)
+        vals = sorted(sums)
+        how = "label" if labelled else "largest-sum"
+        print(f"  {table_id} breakdown {d}: {len(vals)} values, total member = {total_of[d]!r} (by {how}); e.g. {vals[:15]}")
+
     out = []
     for r in rows:
         parts = [str(r[d]).strip() for d in dims
-                 if r.get(d) is not None and not _TOTAL_RE.match(str(r[d]).strip())]
+                 if r.get(d) is not None and str(r[d]).strip() != total_of[d]]
         if not parts or (len(parts) == 1 and part_re.search(parts[0])):
+            # Make the chosen all-members value recognisable downstream: the
+            # dashboard (RX_TOTAL) identifies totals by a leading "Totaal",
+            # so a total found by largest-sum (e.g. plain "Zelfstandigen")
+            # is relabelled "Totaal (Zelfstandigen)".
+            r = dict(r)
+            for d in dims:
+                v = r.get(d)
+                if v is not None and str(v).strip() == total_of[d] and not _TOTAL_RE.match(total_of[d]):
+                    r[d] = f"Totaal ({total_of[d]})"
             out.append(r)
-    if not any(all(r.get(d) is None or _TOTAL_RE.match(str(r[d]).strip()) for d in dims) for r in out):
-        print(f"  WARNING: breakdown trim for {table_id} found no all-Totaal row "
-              f"(Totaal members may be worded differently -- see values above); keeping untrimmed rows.")
+    n_total = sum(1 for r in out if all(r.get(d) is None or _TOTAL_RE.match(str(r[d]).strip()) for d in dims))
+    n_age = len(out) - n_total
+    if n_total == 0:
+        print(f"  WARNING: breakdown trim for {table_id} found no all-total row; keeping untrimmed rows.")
         return rows
-    print(f"  poc breakdown trim for {table_id}: kept {len(out)}/{len(rows)} rows (totals + 55+/65+ age bands)")
+    if n_age == 0:
+        print(f"  WARNING: breakdown trim for {table_id} found no 55+/65+ age rows (pattern {part_re.pattern!r}) -- "
+              f"KPI 4 will be empty until the age wording is added; loading totals only to stay within the Aura cap.")
+    print(f"  poc breakdown trim for {table_id}: kept {len(out)}/{len(rows)} rows ({n_total} total rows, {n_age} age-band rows)")
     return out
 
 

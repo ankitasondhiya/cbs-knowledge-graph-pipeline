@@ -1334,7 +1334,7 @@ const KPI_DEFINITIONS = [
              MATCH (o)-[:HAS_VARIABLE]->(c:Concept), (o)-[:HAS_BRANCH]->(b:Branch)
              WHERE c.prefLabelNl =~ '(?i)^zelfstandigen$' AND b.prefLabelNl =~ '${RX_SECTION}'
              WITH b, o, [(o)-[:HAS_DIMENSION]->(d) WHERE NOT d.prefLabelNl =~ '${RX_TOTAL}' | d.prefLabelNl] AS parts
-             WHERE size(parts) = 0 OR (size(parts) = 1 AND parts[0] =~ '(?i).*(55 tot 65|55 jaar|65 jaar).*')
+             WHERE size(parts) = 0 OR (size(parts) = 1 AND parts[0] =~ '(?i).*(55 tot 65|55 jaar of ouder|55 jaar en ouder|65 jaar of ouder|65 jaar en ouder|65 tot [0-9]+ jaar).*')
              WITH b, sum(CASE WHEN size(parts) = 0 THEN o.value END) AS total,
                      sum(CASE WHEN size(parts) = 1 THEN o.value END) AS older
              WHERE total > 0 AND older > 0
