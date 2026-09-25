@@ -199,10 +199,77 @@ def _keep_demographics_subset(row: dict) -> bool:
     return code.startswith("NL") or code.startswith("GM")
 
 
+# ---------------------------------------------------------------------
+# KPI measure trim (poc only). Row filters alone weren't enough: a 10-table
+# KPI dry run came to ~1.72M relationship ops against Aura Free's 400k cap,
+# almost entirely from WIDE tables -- every measure column in a row becomes
+# its own Observation node with 3-6 relationships. 86165NED has ~118 measure
+# columns and the KPIs use 2; 86119NED has 229 and the KPIs use 2.
+# For these tables, poc keeps only the measure columns the KPI dashboard
+# actually reads (plus a few curated ones for drill-down), and only the
+# LATEST period each kept measure was published in -- the KPIs only ever
+# show the latest value anyway. Matched on the raw CBS field name.
+# Full-scope output (no --scope) is untouched and keeps everything.
+POC_MEASURES = {
+    # KPI 9 (+ a few curated demographics for drill-down)
+    "86165NED": re.compile(r"^(AantalInwoners|BedrijfsvestigingenTotaal|HuishoudensTotaal|GemiddeldeWOZWaardeVanWoningen|GemiddeldInkomenPerInwoner)_\d+$"),
+    # KPI 2 (ERP) + KPI 3 (AI)
+    "86119NED": re.compile(r"(ERP|Erp|EnterpriseResource|AIGebruikt|KunstmatigeIntelligentie)"),
+    # KPI 4 (number of self-employed)
+    "84466NED": re.compile(r"^(Aantal)?Zelfstandigen"),
+    # KPI 8 (headline entrepreneur confidence)
+    "85610NED": re.compile(r"Ondernemersvertrouwen"),
+}
+_MEASURE_KEY_RE = re.compile(r"_\d+$")
+
+
+def _trim_measures(rows: list, table_id: str) -> list:
+    pat = POC_MEASURES.get(table_id)
+    if pat is None or not rows:
+        return rows
+    # Suffixed keys that glossary.py declares as dimensions/labels (e.g.
+    # 86165NED's Codering_3 region code, Gemeentenaam_1) are NOT measures
+    # and must survive the trim -- the region link depends on Codering_3.
+    from glossary import DIMENSION_FIELDS
+    measure_keys = {k for r in rows[:200] for k, v in r.items()
+                    if _MEASURE_KEY_RE.search(k) and k not in DIMENSION_FIELDS
+                    and (v is None or isinstance(v, (int, float)))}
+    keep = {k for k in measure_keys if pat.search(k)}
+    if not keep:
+        # Safety valve: never silently empty a KPI table because CBS worded
+        # a column differently than expected -- keep everything and say so.
+        print(f"  WARNING: poc measure trim for {table_id} matched no columns "
+              f"(pattern {pat.pattern!r}); keeping all {len(measure_keys)} measures.")
+        return rows
+    drop = measure_keys - keep
+    # Latest period in which each kept measure actually has a value.
+    latest = {}
+    for r in rows:
+        p = r.get("Perioden")
+        for k in keep:
+            if r.get(k) is not None and (k not in latest or (p or "") > (latest[k] or "")):
+                latest[k] = p
+    out = []
+    for r in rows:
+        p = r.get("Perioden")
+        live = [k for k in keep if r.get(k) is not None and latest.get(k) == p]
+        if not live:
+            continue
+        nr = {k: v for k, v in r.items() if k not in drop}
+        for k in keep:
+            if k not in live:
+                nr[k] = None  # rdf_mapper skips None -> no Observation
+        out.append(nr)
+    print(f"  poc measure trim for {table_id}: kept {sorted(keep)} "
+          f"(dropped {len(drop)} other measures), latest period(s) {sorted(set(map(str, latest.values())))}, "
+          f"{len(out)}/{len(rows)} rows")
+    return out
+
+
 def apply_scope(rows: list, table_id: str, scope: str | None) -> list:
     if scope != "poc":
         return rows
     keep_fn = SCOPE_TABLES.get(table_id)
-    if keep_fn is None:
-        return rows  # not one of the tables that needs scoping -- pass through in full
-    return [r for r in rows if keep_fn(r)]
+    if keep_fn is not None:
+        rows = [r for r in rows if keep_fn(r)]
+    return _trim_measures(rows, table_id)

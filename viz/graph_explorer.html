@@ -1274,7 +1274,7 @@ function kpiAvgPreferTotals(groupVar) {
              WITH ${groupVar}, reduce(s = 0.0, v IN vals | s + v) / size(vals) AS pct`;
 }
 
-const RX_ERP = ".*(E R P|ERP|[Ee]nterprise [Rr]esource).*";
+const RX_ERP = ".*(E R P|ERP|Erp( |$)|[Ee]nterprise [Rr]esource).*";
 const RX_AI = "(?i)(a ?i gebruikt.*|.*kunstmatige intelligentie.*gebruik.*|.*gebruik.*kunstmatige intelligentie.*)";
 
 const KPI_DEFINITIONS = [
