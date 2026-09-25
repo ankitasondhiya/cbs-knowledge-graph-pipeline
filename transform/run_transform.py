@@ -234,7 +234,7 @@ def _out_suffix(scope: str | None) -> str:
     return ".poc.nt" if scope == "poc" else ".nt"
 
 
-def run_azure(scope: str | None = None, force: bool = False):
+def run_azure(scope: str | None = None, force: bool = False, tables: set | None = None):
     container = get_blob_container()
     manifest_key = _manifest_key(scope)
     processed = load_manifest(container, manifest_key)
@@ -252,13 +252,22 @@ def run_azure(scope: str | None = None, force: bool = False):
         and (force or b.name not in processed)
     ]
     keys = [k for k in all_new_keys if _table_id_from_key(k) in IMPORTANT_TABLES]
+    # Optional narrowing on top of IMPORTANT_TABLES -- lets a fix to
+    # rdf_mapper.py/shacl_shapes.ttl be re-verified against just the
+    # affected table(s) with --force, instead of --force reprocessing
+    # every table's landing-zone files (wasteful, and risks re-creating
+    # the validated/ duplicate-file problem on any table that happens to
+    # have more than one raw snapshot sitting in landing/). Same shape as
+    # load/run_load.py's --tables.
+    if tables:
+        keys = [k for k in keys if _table_id_from_key(k) in tables]
     skipped_out_of_scope = len(all_new_keys) - len(keys)
     if skipped_out_of_scope:
-        print(f"Skipping {skipped_out_of_scope} raw file(s) for tables outside IMPORTANT_TABLES "
-              f"(landed by fetch_cbs_tables.py's full-catalog pull, not scoped for transform).")
+        print(f"Skipping {skipped_out_of_scope} raw file(s) outside IMPORTANT_TABLES and/or the --tables filter "
+              f"(landed by fetch_cbs_tables.py's full-catalog pull, not in scope for this run).")
 
     if not keys:
-        print("No new raw files to transform (within IMPORTANT_TABLES). Landing zone is fully processed for the scoped set.")
+        print("No new raw files to transform (within IMPORTANT_TABLES / --tables filter). Landing zone is fully processed for the scoped set.")
         return
 
     label = f" (scope={scope})" if scope else ""
@@ -329,6 +338,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local", action="store_true", help="run against sample_landing/ instead of Azure Blob")
     parser.add_argument(
+        "--tables", default=None,
+        help="comma-separated CBS table IDs to transform, e.g. 81578NED,83631NED -- "
+             "skips all others. Combine with --force to re-verify a rdf_mapper.py fix "
+             "against just the affected table(s) without touching every other table's "
+             "already-correct validated/ output. Ignored with --local.",
+    )
+    parser.add_argument(
         "--scope", choices=["poc"], default=None,
         help="poc: narrow rows to top-level industry sections + major trading partners "
              "(see scope_filters.py) so the result fits AuraDB Free's node cap. "
@@ -343,8 +359,9 @@ if __name__ == "__main__":
              "Ignored with --local (no manifest there).",
     )
     args = parser.parse_args()
+    tables = set(t.strip() for t in args.tables.split(",")) if args.tables else None
 
     if args.local:
         run_local(args.scope)
     else:
-        run_azure(args.scope, args.force)
+        run_azure(args.scope, args.force, tables)

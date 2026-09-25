@@ -17,6 +17,10 @@ on:
         options:
           - ""
           - poc
+      tables:
+        description: "Optional: comma-separated CBS table IDs to transform (e.g. 81578NED,83631NED). Leave blank to transform every table with new/unprocessed landing-zone data. Use this with force=true to re-verify a rdf_mapper.py fix against just the affected table(s)."
+        required: false
+        default: ""
       force:
         description: "true = ignore the processed-files manifest and reprocess raw files even if already marked done. Needed after fixing rdf_mapper.py/shacl_shapes.ttl and re-running against a table that previously produced nothing."
         required: false
@@ -65,6 +69,9 @@ jobs:
           fi
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             ARGS="$ARGS --force"
+          fi
+          if [ -n "${{ github.event.inputs.tables }}" ]; then
+            ARGS="$ARGS --tables ${{ github.event.inputs.tables }}"
           fi
           # Print the resolved command so the log itself is proof of which
           # flags actually ran -- otherwise there's no way to confirm from
