@@ -217,8 +217,13 @@ POC_MEASURES = {
     "86119NED": re.compile(r"(ERP|Erp|EnterpriseResource|AIGebruikt|KunstmatigeIntelligentie)"),
     # KPI 4 (number of self-employed)
     "84466NED": re.compile(r"^(Aantal)?Zelfstandigen"),
-    # KPI 8 (headline entrepreneur confidence)
-    "85610NED": re.compile(r"Ondernemersvertrouwen"),
+    # KPI 8. Confirmed from the real transform notes (2026-09-25): this
+    # regional Conjunctuurenquete has no single "Ondernemersvertrouwen"
+    # column -- its headline indicators are the Saldo* balances (% positive
+    # minus % negative answers), e.g. SaldoEconomischKlimaatKomende3Mnd_133.
+    # Keep only those 7 balances; the ~138 per-answer percentage columns
+    # (is verbeterd / gelijk gebleven / verslechterd ...) are dropped.
+    "85610NED": re.compile(r"^Saldo"),
 }
 _MEASURE_KEY_RE = re.compile(r"_\d+$")
 

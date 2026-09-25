@@ -1387,15 +1387,15 @@ const KPI_DEFINITIONS = [
              ORDER BY value DESC`
   },
   {
-    n: 8, title: "Regional Entrepreneur Confidence",
-    blurb: "Entrepreneur confidence (ondernemersvertrouwen) per province / region, latest quarter -- where sentiment supports investment.",
+    n: 8, title: "Regional Business Outlook",
+    blurb: "Expected economic climate for the next 3 months, per region (balance: % expecting better minus % expecting worse) -- where entrepreneurs are optimistic.",
     tables: "85610NED (Conjunctuurenquete; regio)",
-    valueLabel: "confidence balance",
-    detail: "Business use: timing and prioritising regional investment -- pair with KPI 7: a region that is growing AND confident is a stronger bet than one that is only big (KPI 6).\nHow it's computed: the headline 'ondernemersvertrouwen' measure only (the survey has many other questions), latest quarter, the central estimate rather than the margin bounds, and the seasonally-adjusted series when both are present. 85614NED was removed from this KPI -- it is broken down by industry, not region.\nIf empty: Diagnose -> 'Concepts matching keywords' shows the survey's real measure names.",
-    diag: { tables: ["85610NED"], relType: "ABOUT_REGION", targetLabel: "Region", keywords: ["vertrouwen", "klimaat"] },
+    valueLabel: "outlook balance (%-points)",
+    detail: "Business use: timing and prioritising regional investment -- pair with KPI 7: a region that is growing AND confident is a stronger bet than one that is only big (KPI 6).\nHow it's computed: the survey's 'Saldo economisch klimaat komende 3 mnd' balance -- a positive number means more entrepreneurs expect improvement than decline (85610NED has no single 'ondernemersvertrouwen' column; confirmed from the transform notes). Latest quarter, the central estimate rather than the margin bounds, and the seasonally-adjusted series when both are present. 85614NED was removed from this KPI -- it is broken down by industry, not region.\nIf empty: Diagnose -> 'Concepts matching keywords' shows the survey's real measure names.",
+    diag: { tables: ["85610NED"], relType: "ABOUT_REGION", targetLabel: "Region", keywords: ["saldo", "klimaat"] },
     cypher: `${kpiLatest(["85610NED"])}
              MATCH (o)-[:HAS_VARIABLE]->(c:Concept), (o)-[:ABOUT_REGION]->(r:Region)
-             WHERE toLower(c.prefLabelNl) CONTAINS 'ondernemersvertrouwen'
+             WHERE toLower(replace(c.prefLabelNl, ' ', '')) CONTAINS 'saldoeconomischklimaatkomende'
              WITH r, collect(o) AS obs
              WITH r, CASE WHEN any(x IN obs WHERE toLower(coalesce(x.marginType, '')) CONTAINS 'waarde')
                           THEN [x IN obs WHERE toLower(coalesce(x.marginType, '')) CONTAINS 'waarde'] ELSE obs END AS obs
