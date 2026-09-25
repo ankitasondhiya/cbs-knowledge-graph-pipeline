@@ -285,7 +285,7 @@ def _trim_measures(rows: list, table_id: str) -> list:
 _TOTAL_RE = re.compile(r"^(totaal|alle |nederland|mannen en vrouwen|beide geslachten)", re.I)
 POC_BREAKDOWN = {
     # 55-65 and 65+ bands only -- NOT "15 tot 55 jaar" (which also contains "55 jaar").
-    "84466NED": re.compile(r"(55 tot 65|55 jaar of ouder|55 jaar en ouder|65 jaar of ouder|65 jaar en ouder|65 tot \d+ jaar)", re.I),
+    "84466NED": re.compile(r"(55 tot 65|55 jaar of ouder|55 jaar en ouder|65 jaar of ouder|65 jaar en ouder|65 tot \d+ jaar|75 jaar of ouder|75 jaar en ouder)", re.I),
 }
 _NON_BREAKDOWN_KEYS = {"ID", "Perioden", "Marges", "Seizoencorrectie"} | set(BRANCH_FIELDS)
 
