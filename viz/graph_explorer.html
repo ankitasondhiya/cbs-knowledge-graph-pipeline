@@ -1332,7 +1332,7 @@ const KPI_DEFINITIONS = [
     diag: { tables: ["84466NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["zelfstandig", "aantal"] },
     cypher: `${kpiLatest(["84466NED"])}
              MATCH (o)-[:HAS_VARIABLE]->(c:Concept), (o)-[:HAS_BRANCH]->(b:Branch)
-             WHERE c.prefLabelNl =~ '(?i)^(aantal )?zelfstandigen.*' AND b.prefLabelNl =~ '${RX_SECTION}'
+             WHERE c.prefLabelNl =~ '(?i)^zelfstandigen$' AND b.prefLabelNl =~ '${RX_SECTION}'
              WITH b, o, [(o)-[:HAS_DIMENSION]->(d) WHERE NOT d.prefLabelNl =~ '${RX_TOTAL}' | d.prefLabelNl] AS parts
              WHERE size(parts) = 0 OR (size(parts) = 1 AND parts[0] =~ '(?i).*(55 tot 65|55 jaar|65 jaar).*')
              WITH b, sum(CASE WHEN size(parts) = 0 THEN o.value END) AS total,

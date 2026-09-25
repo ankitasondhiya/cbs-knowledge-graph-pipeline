@@ -215,8 +215,10 @@ POC_MEASURES = {
     "86165NED": re.compile(r"^(AantalInwoners|BedrijfsvestigingenTotaal|HuishoudensTotaal|GemiddeldeWOZWaardeVanWoningen|GemiddeldInkomenPerInwoner)_\d+$"),
     # KPI 2 (ERP) + KPI 3 (AI)
     "86119NED": re.compile(r"(ERP|Erp|EnterpriseResource|AIGebruikt|KunstmatigeIntelligentie)"),
-    # KPI 4 (number of self-employed)
-    "84466NED": re.compile(r"^(Aantal)?Zelfstandigen"),
+    # KPI 4 (number of self-employed). Only Zelfstandigen_1 -- the table also
+    # has Zelfstandigen_11 and ZelfstandigenMetBedrijfsvermogen_8/_18 (other
+    # topic groups whose auto-labels look identical), which the KPI must not mix in.
+    "84466NED": re.compile(r"^Zelfstandigen_1$"),
     # KPI 8. Confirmed from the real transform notes (2026-09-25): this
     # regional Conjunctuurenquete has no single "Ondernemersvertrouwen"
     # column -- its headline indicators are the Saldo* balances (% positive
@@ -271,10 +273,52 @@ def _trim_measures(rows: list, table_id: str) -> list:
     return out
 
 
+# ---------------------------------------------------------------------
+# Breakdown trim (poc only). 84466NED is a deep cube: branch x several
+# person-characteristic breakdowns, 28,665 rows for ONE year even after the
+# top-level-branch filter -- ~650k of a 688k relationship dry run on its own.
+# KPI 4 only ever reads (a) the row where every extra breakdown is at its
+# Totaal member, and (b) rows where exactly ONE breakdown is an age band
+# 55+/65+ and the rest are Totaal. Keep only those rows. Same Totaal rule
+# as the dashboard's RX_TOTAL, so the transform keeps exactly what the KPI
+# query will select.
+_TOTAL_RE = re.compile(r"^(totaal|alle |nederland|mannen en vrouwen|beide geslachten)", re.I)
+POC_BREAKDOWN = {
+    "84466NED": re.compile(r"(55 tot 65|55 jaar|65 jaar)", re.I),
+}
+_NON_BREAKDOWN_KEYS = {"ID", "Perioden", "Marges", "Seizoencorrectie"} | set(BRANCH_FIELDS)
+
+
+def _trim_breakdowns(rows: list, table_id: str) -> list:
+    part_re = POC_BREAKDOWN.get(table_id)
+    if part_re is None or not rows:
+        return rows
+    dims = sorted({k for r in rows[:500] for k, v in r.items()
+                   if k not in _NON_BREAKDOWN_KEYS and isinstance(v, str)
+                   and not _MEASURE_KEY_RE.search(k)})
+    # Always log the real members -- this is how a wrong guess gets fixed.
+    for d in dims:
+        vals = sorted({str(r.get(d)).strip() for r in rows if r.get(d) is not None})
+        print(f"  {table_id} breakdown {d}: {len(vals)} values, e.g. {vals[:12]}")
+    out = []
+    for r in rows:
+        parts = [str(r[d]).strip() for d in dims
+                 if r.get(d) is not None and not _TOTAL_RE.match(str(r[d]).strip())]
+        if not parts or (len(parts) == 1 and part_re.search(parts[0])):
+            out.append(r)
+    if not any(all(r.get(d) is None or _TOTAL_RE.match(str(r[d]).strip()) for d in dims) for r in out):
+        print(f"  WARNING: breakdown trim for {table_id} found no all-Totaal row "
+              f"(Totaal members may be worded differently -- see values above); keeping untrimmed rows.")
+        return rows
+    print(f"  poc breakdown trim for {table_id}: kept {len(out)}/{len(rows)} rows (totals + 55+/65+ age bands)")
+    return out
+
+
 def apply_scope(rows: list, table_id: str, scope: str | None) -> list:
     if scope != "poc":
         return rows
     keep_fn = SCOPE_TABLES.get(table_id)
     if keep_fn is not None:
         rows = [r for r in rows if keep_fn(r)]
-    return _trim_measures(rows, table_id)
+    rows = _trim_measures(rows, table_id)
+    return _trim_breakdowns(rows, table_id)
