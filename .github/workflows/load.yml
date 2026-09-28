@@ -1,12 +1,12 @@
 name: CBS load worker
 
-# Runs automatically right after "CBS transform worker" (transform.yml)
-# finishes successfully -- so load only ever runs on data that's already
-# passed the Validation Gate. Doesn't touch fetch.yml or transform.yml.
+# MANUAL ONLY (auto-run after "CBS transform worker" switched off): start it
+# from the Actions tab with "Run workflow" -- scope = poc, the table(s) you
+# want, dry_run = true first. To switch the automatic run back on, re-add under `on:`:
+#   workflow_run:
+#     workflows: ["CBS transform worker"]
+#     types: [completed]
 on:
-  workflow_run:
-    workflows: ["CBS transform worker"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       scope:

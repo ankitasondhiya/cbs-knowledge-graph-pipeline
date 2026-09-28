@@ -1,12 +1,12 @@
 name: CBS transform worker
 
-# Runs automatically right after "CBS extraction worker" (fetch.yml)
-# finishes successfully -- so transform only ever runs on data that's
-# already been freshly landed in R2. Doesn't touch fetch.yml at all.
+# MANUAL ONLY (auto-run after "CBS extraction worker" switched off): start it
+# from the Actions tab with "Run workflow", normally with scope = poc and the
+# table(s) you want. To switch the automatic run back on, re-add under `on:`:
+#   workflow_run:
+#     workflows: ["CBS extraction worker"]
+#     types: [completed]
 on:
-  workflow_run:
-    workflows: ["CBS extraction worker"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       scope:
