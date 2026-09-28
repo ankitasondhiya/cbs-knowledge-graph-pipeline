@@ -87,6 +87,7 @@ IMPORTANT_TABLES = {
     "86413NED", "85821NED", "81234ned",
     # -- added to close KPI gap-analysis findings --
     "86119NED", "80567NED", "84466NED",
+    "81156NED",  # Bedrijfsleven; arbeids- en financiele gegevens per branche -- revenue per industry
     "86285NED",  # swapped in for retired 48051NED (confirmed 404 on CBS's OData API,
                  # not a listing-sync gap) -- live successor for the growth-category
                  # signal, but drops the firm-age dimension in favour of size/legal-form

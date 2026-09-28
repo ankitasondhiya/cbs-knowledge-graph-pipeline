@@ -129,6 +129,9 @@ SCOPE_TABLES = {
     # 85612NED/85614NED/81234ned above.
     "84466NED": _keep_top_level_branch,
     "86119NED": _keep_top_level_branch,
+    # 81156NED (revenue per industry): ~40 financial measures per branch at
+    # every SBI level; the dashboard uses 2 of them at top level only.
+    "81156NED": _keep_top_level_branch,
     # Full audit of every still-unchecked IMPORTANT_TABLES entry (2026-09-23,
     # after 84466NED/86119NED forced a 3rd cap hit) -- checked each one's real
     # DataProperties AND, for the branch-dimensioned ones, the actual
@@ -226,6 +229,10 @@ POC_MEASURES = {
     # Keep only those 7 balances; the ~138 per-answer percentage columns
     # (is verbeterd / gelijk gebleven / verslechterd ...) are dropped.
     "85610NED": re.compile(r"^Saldo"),
+    # Revenue per industry: net revenue (mln euro) + people working (x 1,000).
+    # If CBS names these columns differently, _trim_measures' safety valve
+    # keeps all measures (and prints a warning) rather than dropping the table.
+    "81156NED": re.compile(r"^(NettoOmzet|WerkzamePersonen)(Totaal)?_\d+$"),
 }
 _MEASURE_KEY_RE = re.compile(r"_\d+$")
 

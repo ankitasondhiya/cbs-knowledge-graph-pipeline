@@ -114,6 +114,9 @@ IMPORTANT_TABLES = {
     "80567NED",
     "84466NED",
     "86285NED",  # swapped in for retired 48051NED -- see comment above
+    "81156NED",  # Bedrijfsleven; arbeids- en financiele gegevens per branche, SBI 2008:
+                 # net revenue (netto-omzet) + people working per industry -> revenue per
+                 # industry and revenue per worker (used to estimate SME revenue)
 }
 
 

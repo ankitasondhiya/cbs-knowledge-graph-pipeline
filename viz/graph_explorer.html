@@ -92,6 +92,9 @@
   .kpi-card table.kpi-table { display: none; width: 100%; font-size: 11px; margin-top: 6px; border-collapse: collapse; }
   .kpi-card table.kpi-table td { padding: 3px 4px; border-bottom: 1px solid #f0f0f0; }
   .kpi-card table.kpi-table td:last-child { text-align: right; color: #555; }
+  table.kpi-table tr.kpi-row-clickable > td + td { text-align: right; color: #555; white-space: nowrap; }
+  table.kpi-table thead th { font-size: 10px; font-weight: 600; color: #888; text-align: right; padding: 3px 4px; border-bottom: 1px solid #ddd; }
+  table.kpi-table thead th:first-child { text-align: left; }
   .kpi-card .kpi-actions { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
   .kpi-card button.kpi-toggle-details { font-size: 11px; padding: 5px 10px; background: transparent; border: 1px solid var(--border); color: var(--muted); }
   .kpi-card button.kpi-toggle-details:hover { background: #f5f5f5; }
@@ -119,6 +122,13 @@
   table.kpi-drill-table { width: 100%; font-size: 10.5px; border-collapse: collapse; margin-top: 2px; }
   table.kpi-drill-table th { text-align: left; color: #888; font-weight: 600; padding: 2px 6px; border-bottom: 1px solid #ddd; }
   table.kpi-drill-table td { padding: 2px 6px; border-bottom: 1px solid #f0f0f0; }
+  .kpi-drill-note { font-size: 10px; color: #888; margin: 2px 0 4px; }
+  .kpi-nmi { font-size: 10px; color: #b45309; font-weight: 600; }
+  .kpi-row-detail { font-size: 10.5px; color: #666; line-height: 1.4; margin-top: 3px; }
+  table.kpi-table td { word-break: normal; overflow-wrap: anywhere; }
+  table.kpi-drill-table td { vertical-align: top; overflow-wrap: anywhere; }
+  table.kpi-drill-table.compact td.kpi-drill-val, table.kpi-drill-table.compact th.kpi-drill-val { text-align: right; white-space: nowrap; }
+  table.kpi-drill-table.compact tr.kpi-drill-used td { background: #eef5ff; }
   .kpi-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
   .kpi-modal { background: var(--panel); border-radius: 12px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 26px 28px; position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
   .kpi-modal-close { position: absolute; top: 12px; right: 14px; font-size: 24px; background: transparent; border: none; color: var(--muted); cursor: pointer; line-height: 1; padding: 4px 8px; }
@@ -180,6 +190,34 @@
   #errBox { color: #c62828; font-size: 12px; margin-top: 6px; white-space: pre-wrap; }
   .rel-row { padding: 4px 0; border-bottom: 1px solid #f2f2f2; }
   .rel-row b { color: var(--text); font-weight: 600; }
+  /* ---- Ask-the-data chat (same overlay pattern as #kpiView) ---- */
+  #chatView { position: absolute; inset: 0; z-index: 10; background: var(--bg); display: none; flex-direction: column; padding: 18px 28px 14px; }
+  #chatView h2 { font-size: 15px; margin: 0 0 4px 0; }
+  #chatHeader .hint { max-width: 760px; line-height: 1.5; }
+  #chatSettings { display: flex; gap: 8px; align-items: center; margin: 10px 0 6px; flex-wrap: wrap; }
+  #chatSettings input { width: 320px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  #chatSettings select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; max-width: 280px; }
+  #chatSettings button { font-size: 12px; padding: 6px 10px; border-radius: 6px; }
+  #chatLog { flex: 1; overflow-y: auto; padding: 8px 0; display: flex; flex-direction: column; gap: 12px; }
+  .chat-msg { max-width: 900px; padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.55; }
+  .chat-user { align-self: flex-end; background: #2b2b2b; color: #fff; white-space: pre-wrap; }
+  .chat-bot { align-self: flex-start; background: #fff; border: 1px solid var(--border); color: var(--text); }
+  .chat-bot.err { border-color: #e7b4b4; background: #fff6f6; }
+  .chat-bot .chat-meta { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .chat-bot details { margin-top: 8px; font-size: 11.5px; }
+  .chat-bot details summary { cursor: pointer; color: var(--muted); }
+  .chat-bot pre { background: #f7f7f7; border: 1px solid var(--border); border-radius: 6px; padding: 8px; white-space: pre-wrap; font-size: 11px; margin: 6px 0; }
+  .chat-bot table { border-collapse: collapse; margin-top: 6px; font-size: 11.5px; }
+  .chat-bot th, .chat-bot td { border-bottom: 1px solid #eee; padding: 3px 8px; text-align: left; }
+  .chat-bot th { color: var(--muted); font-weight: 600; }
+  .chat-thinking { color: var(--muted); font-style: italic; }
+  #chatExamples { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  #chatExamples button { font-size: 11.5px; padding: 5px 10px; border-radius: 14px; background: #fff; color: #333; border: 1px solid var(--border); }
+  #chatExamples button:hover { background: #f0f0f0; }
+  #chatInputRow { display: flex; gap: 8px; align-items: flex-end; }
+  #chatInput { flex: 1; resize: vertical; min-height: 42px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13px; }
+  #chatSend { padding: 10px 18px; border-radius: 8px; font-size: 13px; }
+  #chatSend:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -202,6 +240,7 @@
     <button id="viewGraphBtn" class="active">🕸 Graph view</button>
     <button id="viewChartBtn">📊 Chart view</button>
     <button id="viewKpiBtn">📈 KPI dashboard</button>
+    <button id="viewChatBtn">💬 Ask the data</button>
   </div>
 </header>
 
@@ -254,6 +293,28 @@
       concept is curated in glossary.py yet.
     </div>
     <div id="kpiGrid"></div>
+  </div>
+  <div id="chatView">
+    <div id="chatHeader">
+      <h2>💬 Ask the data</h2>
+      <div class="hint">
+        Ask a question in English or Dutch. The assistant writes a <b>read-only</b> Cypher query,
+        runs it on your Aura data, and answers from the result only. The query and the raw rows are
+        shown under every answer, so every number can be checked.
+      </div>
+      <div id="chatSettings">
+        <input id="chatKey" type="password" autocomplete="off" placeholder="Groq API key (kept in memory only -- never saved)" />
+        <select id="chatModel"><option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option></select>
+        <button id="chatLoadModels" class="secondary" title="Fetch the models your Groq key can use">Load models</button>
+        <button id="chatClear" class="secondary">New conversation</button>
+      </div>
+    </div>
+    <div id="chatLog"></div>
+    <div id="chatExamples"></div>
+    <div id="chatInputRow">
+      <textarea id="chatInput" rows="2" placeholder="e.g. Which industries have the highest vacancy rate right now?  (Enter = send, Shift+Enter = new line)"></textarea>
+      <button id="chatSend">Ask</button>
+    </div>
   </div>
   <div id="kpiModalOverlay" class="kpi-modal-overlay" style="display:none">
     <div class="kpi-modal">
@@ -1166,6 +1227,7 @@ cy.on('dbltap', 'node', async (evt) => {
 document.getElementById('viewGraphBtn').onclick = () => switchView('graph');
 document.getElementById('viewChartBtn').onclick = () => switchView('chart');
 document.getElementById('viewKpiBtn').onclick = () => switchView('kpi');
+document.getElementById('viewChatBtn').onclick = () => switchView('chat');
 document.getElementById('refreshChartBtn').onclick = () => renderBarChart(true);
 
 let chartMode = 'canvas'; // 'canvas' = whatever's loaded via Browse/Filter right now; 'db' = whole-database totals
@@ -1200,6 +1262,8 @@ function switchView(v) {
   document.getElementById('viewGraphBtn').classList.toggle('active', v === 'graph');
   document.getElementById('viewChartBtn').classList.toggle('active', v === 'chart');
   document.getElementById('viewKpiBtn').classList.toggle('active', v === 'kpi');
+  document.getElementById('viewChatBtn').classList.toggle('active', v === 'chat');
+  document.getElementById('chatView').style.display = v === 'chat' ? 'flex' : 'none';
   // #network is NEVER hidden -- Chart/KPI views just overlay on top of it
   // with their own opaque background (position:absolute, higher z-index).
   // See the CSS comment on #network for why: vis-network breaks
@@ -1267,8 +1331,8 @@ function kpiLatestForConcept(table, conceptRegex) {
 // "Prefer the Totaal member of every extra breakdown if one exists,
 // otherwise average across what's there" -- for % measures from survey
 // tables whose company-size breakdown may or may not carry a Totaal row.
-function kpiAvgPreferTotals(groupVar) {
-  return `WITH ${groupVar}, o, NOT EXISTS { MATCH (o)-[:HAS_DIMENSION]->(d) WHERE NOT d.prefLabelNl =~ '${RX_TOTAL}' } AS isTotal
+function kpiAvgPreferTotals(groupVar, totalRx = RX_TOTAL) {
+  return `WITH ${groupVar}, o, NOT EXISTS { MATCH (o)-[:HAS_DIMENSION]->(d) WHERE NOT d.prefLabelNl =~ '${totalRx}' } AS isTotal
              WITH ${groupVar}, collect(CASE WHEN isTotal THEN o.value END) AS tv, collect(o.value) AS av
              WITH ${groupVar}, CASE WHEN size(tv) > 0 THEN tv ELSE av END AS vals
              WITH ${groupVar}, reduce(s = 0.0, v IN vals | s + v) / size(vals) AS pct`;
@@ -1276,6 +1340,17 @@ function kpiAvgPreferTotals(groupVar) {
 
 const RX_ERP = ".*(E R P|ERP|Erp( |$)|[Ee]nterprise [Rr]esource).*";
 const RX_AI = "(?i)(a ?i gebruikt.*|.*kunstmatige intelligentie.*gebruik.*|.*gebruik.*kunstmatige intelligentie.*)";
+// ICT survey (86119NED) only covers businesses with 10+ employees, and its
+// company-size member "10 of meer werkzame personen" IS the all-sizes
+// total for that survey -- it doesn't start with "Totaal", so RX_TOTAL
+// misses it and the parts (10-50, 50-250, 250+) got averaged together
+// with their own total. Used by KPI 2 only.
+const RX_TOTAL_ICT = "(?i)^(totaal|alle |10 of meer werkzame personen|10 en meer werkzame personen).*";
+// Business-count size classes with 10+ employees in 81589NED/86280NED
+// (auto-labels such as 'k_10 Tot20 Werkzame Personen'). Four
+// non-overlapping bands: 10-20, 20-50, 50-100, 100+. Summed = the
+// population the ICT survey percentage actually describes.
+const RX_SIZE_10PLUS = "(?i)^k_(10 Tot ?20|20 Tot ?50|50 Tot ?100|100 Werkzame Personen Of Meer)( .*|$)";
 
 const KPI_DEFINITIONS = [
   {
@@ -1296,31 +1371,165 @@ const KPI_DEFINITIONS = [
              ORDER BY value DESC`
   },
   {
-    n: 2, title: "ERP Adoption Gap",
-    blurb: "% of businesses per industry NOT using an ERP system -- where business software replaces spreadsheets, not a competitor.",
-    tables: "86119NED (ICT-gebruik bij bedrijven) -- ERP question",
-    valueLabel: "% without ERP",
-    detail: "Business use: greenfield targeting for ERP / business-software vendors and implementation partners. A high gap means the buyer's alternative is 'no system', which shortens the sales cycle.\nHow it's computed: 100 minus the % of businesses reporting ERP use, latest survey year in which the ERP question was asked. If the survey's company-size breakdown carries a Totaal row it is used; otherwise sizes are averaged.\nIf empty: open Diagnose -- 'Concepts matching keywords' shows the exact wording CBS uses for the ERP question in your data.",
-    diag: { tables: ["86119NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["e r p", "erp", "enterprise", "bedrijfsapplicat"] },
-    cypher: `${kpiLatestForConcept("86119NED", RX_ERP)}
+    n: 2, title: "ERP Adoption Gap -- Sized by Market",
+    blurb: "Estimated number of businesses (10+ employees) per industry with NO ERP system: CBS's % without ERP x the number of 10+ employee businesses in that industry -- ranked the way a sales team should prioritize outreach.",
+    tables: "86119NED (ICT-gebruik bij bedrijven) -- ERP question, total for 10+ employees; sized with 86280NED/81589NED business counts, 10+ employee size classes",
+    valueLabel: "est. businesses (10+ staff) without ERP",
+    detail: "Business use: greenfield targeting for ERP / business-software vendors and implementation partners. A high gap means the buyer's alternative is 'no system', which shortens the sales cycle. A % alone doesn't size the prize, so it is converted into an estimated number of businesses.\nHow it's computed: (1) ERP gap % = 100 minus the % of businesses using ERP software, from CBS's ICT survey (86119NED). 86119NED has two columns both named 'ERPSoftware': one under 'Datagebruik en -analytics' (uses ERP business software -- the one used here) and one under 'Clouddiensten' (buys ERP as a cloud service, a subset of the first). CBS numbers columns in topic-group order, so the lower-numbered one is used; the drill-down shows its column number. Latest survey year the ERP question was asked, using CBS's own all-sizes row '10 of meer werkzame personen' (the survey only covers businesses with 10+ employees; the 10-50 / 50-250 / 250+ rows are its parts and are NOT averaged in). (2) Businesses with 10+ employees in that industry = sum of the size classes 10-19, 20-49, 50-99 and 100+ (e.g. Horeca: 4,350 + 1,600 + 300 + 200 = 6,450; shown under the number in the table, next to 'Out of: all businesses', which also counts the 1-9 staff firms that CBS's ICT survey leaves out) from 86280NED (SBI 2025) or 81589NED (SBI 2008), latest pull and quarter; if both are loaded, the latest quarter wins, then 86280NED. (3) Estimate = gap % x that count. Both inputs describe the same population (10+ employees), so the estimate is like-for-like; one-person and small firms are outside CBS's ICT survey and are not included. If the business-count table has no data for an industry, that industry shows the plain gap % instead and is listed after the sized ones.\nClick any industry for exactly the rows used: the ERP rows per size group (the one used is marked) and the size-class counts that were summed.",
+    diag: { tables: ["86119NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["e r p", "erp", "enterprise", "bedrijfsapplicat"], conceptFilter: RX_ERP, firstColumnOnly: true },
+    diag2: { tables: ["86280NED", "81589NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["werkzame", "bedrijven"], conceptFilter: RX_SIZE_10PLUS },
+    drillLatestOnly: true,
+    drillUsedDim: /^10 (of|en) meer werkzame personen/i,
+    showCompanies: true,
+    companyNote: "Which ERP each company uses isn't in this data -- the CBS % above is the chance for a company in this industry.",
+    // Shown next to the estimate so it can be checked: estimate = % without ERP x businesses (10+ staff)
+    valueHeader: "Est. businesses without ERP",
+    extraCols: [
+      { key: "pctWithout", header: "% without ERP", fmt: "pct" },
+      { key: "pctUsing", header: "% using ERP", fmt: "pct" },
+      { key: "biz10", header: "Businesses (10+ staff)", fmt: "int", subKey: "bizParts", subFmt: "sum" },
+      { key: "bizAll", header: "Out of: all businesses", fmt: "int", subKey: "biz10", subFmt: "shareOf" },
+      { key: "indRevenueMln", header: "Industry revenue (€ mln, CBS)", fmt: "int" },
+      { key: "indWorkersK", header: "People working (x 1,000)", fmt: "int" },
+    ],
+    barNote: r => r.extra[0] == null ? '' : `${Number(r.extra[0]).toLocaleString(undefined, { maximumFractionDigits: 1 })}% no ERP`,
+    rowDetail: r => [
+      `${kpiP(r.extra[0])} without ERP (${kpiP(r.extra[1])} use it)`,
+      r.extra[2] == null ? '' : `of ${kpiN(r.extra[2])} businesses with 10+ staff` + (r.sub && r.sub[2] && r.sub[2].length ? ` = ${r.sub[2].map(kpiN).join(' + ')}` : ''),
+      r.extra[3] == null ? '' : `out of ${kpiN(r.extra[3])} businesses of all sizes` + (r.extra[2] ? ` (${kpiP(100 * r.extra[2] / r.extra[3])} have 10+ staff)` : ''),
+      industryRevenueLine(r.extra[4], r.extra[5]),
+    ],
+    insightNote: r => (r.extra[0] == null || r.extra[2] == null) ? '' :
+      `${Number(r.extra[0]).toLocaleString(undefined, { maximumFractionDigits: 1 })}% of ${Number(r.extra[2]).toLocaleString()} businesses with 10+ staff` +
+      (r.extra[3] == null ? '' : `, out of ${Number(r.extra[3]).toLocaleString()} businesses of all sizes`),
+    cypher: `MATCH (x:Observation {sourceTable: 'cbs:86119NED'}) WITH max(x.sourcePulledAt) AS lp
+             MATCH (y:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(cy:Concept)
+             WHERE cy.prefLabelNl =~ '${RX_ERP}'
+             WITH lp, cy, toInteger(last(split(cy.uri, '-'))) AS col
+             ORDER BY col ASC
+             WITH lp, collect(cy)[0] AS erpC
+             MATCH (y2:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(erpC)
+             WITH lp, erpC, max(y2.period) AS per
+             MATCH (o:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(erpC)
+             WHERE per IS NULL OR o.period = per
              MATCH (o)-[:HAS_BRANCH]->(b:Branch) WHERE b.prefLabelNl =~ '${RX_SECTION}'
-             ${kpiAvgPreferTotals("b")}
+             ${kpiAvgPreferTotals("b", RX_TOTAL_ICT)}
              WHERE pct >= 0 AND pct <= 100
-             RETURN b.prefLabelNl AS label, round(100 - pct, 1) AS value
-             ORDER BY value DESC`
+             WITH b, round(100 - pct, 1) AS gapPct
+             CALL {
+               WITH b
+               MATCH (ob:Observation)-[:HAS_BRANCH]->(b), (ob)-[:HAS_VARIABLE]->(cb:Concept)
+               WHERE ob.sourceTable IN ['cbs:86280NED', 'cbs:81589NED']
+                 AND (cb.prefLabelNl =~ '${RX_SIZE_10PLUS}' OR (toLower(cb.prefLabelNl) CONTAINS 'totaal' AND toLower(cb.prefLabelNl) CONTAINS 'bedrijven'))
+               WITH ob, cb, cb.prefLabelNl =~ '${RX_SIZE_10PLUS}' AS isBand
+               ORDER BY toInteger(last(split(cb.uri, '-'))) ASC
+               WITH ob.sourceTable AS t, ob.sourcePulledAt AS pa, ob.period AS per,
+                    sum(CASE WHEN isBand THEN ob.value END) AS v,
+                    sum(CASE WHEN NOT isBand THEN ob.value END) AS tot,
+                    collect(CASE WHEN isBand THEN ob.value END) AS parts
+               WHERE v IS NOT NULL
+               WITH t, max(pa) AS lp, collect({pa: pa, per: per, v: v, tot: tot, parts: parts}) AS xs
+               UNWIND xs AS x
+               WITH t, lp, x WHERE x.pa = lp
+               WITH t, x.per AS per, x
+               ORDER BY per DESC, t DESC
+               WITH collect(x)[0] AS best
+               RETURN best.v AS biz10, best.tot AS bizAll, best.parts AS bizParts
+             }
+             CALL {
+               WITH b
+               OPTIONAL MATCH (orv:Observation {sourceTable: 'cbs:81156NED'})-[:HAS_BRANCH]->(b)
+               OPTIONAL MATCH (orv)-[:HAS_VARIABLE]->(crv:Concept)
+               WITH orv, toLower(replace(replace(coalesce(crv.prefLabelNl, ''), ' ', ''), '-', '')) AS lbl
+               ORDER BY orv.sourcePulledAt DESC, orv.period DESC
+               WITH collect(CASE WHEN lbl = 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
+                    collect(CASE WHEN lbl = 'werkzamepersonen' THEN orv.value END)[0] AS indWorkersK
+               RETURN indRevenueMln, indWorkersK
+             }
+             RETURN b.prefLabelNl AS label,
+                    CASE WHEN biz10 IS NOT NULL THEN round(gapPct / 100.0 * biz10) ELSE gapPct END AS value,
+                    gapPct AS pctWithout, 100 - gapPct AS pctUsing, biz10 AS biz10, bizParts AS bizParts, bizAll AS bizAll,
+                    indRevenueMln, indWorkersK
+             ORDER BY (biz10 IS NOT NULL) DESC, value DESC`
   },
   {
     n: 3, title: "AI Adoption Rate",
     blurb: "% of businesses per industry already using AI -- where AI offers can lead with proof vs. where the market still needs educating.",
-    tables: "86119NED (ICT-gebruik bij bedrijven) -- 'AI gebruikt' question",
+    tables: "86119NED (ICT-gebruik bij bedrijven) -- 'AI gebruikt' question, total for 10+ employees; business counts from 86280NED/81589NED",
     valueLabel: "% using AI",
-    detail: "Business use: segment AI go-to-market. High-adoption industries buy on differentiation and case studies; low-adoption ones need awareness and low-risk pilots first. Read together with KPI 2: low ERP gap + low AI adoption = digitally mature but AI-greenfield, often the best AI target.\nHow it's computed: % of businesses answering yes to the headline 'AI gebruikt' question (not an average of all AI sub-questions, which the old query mixed together), latest survey year.",
-    diag: { tables: ["86119NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["a i", "kunstmatige"] },
-    cypher: `${kpiLatestForConcept("86119NED", RX_AI)}
+    detail: "Business use: segment AI go-to-market. High-adoption industries buy on differentiation and case studies; low-adoption ones need awareness and low-risk pilots first. Read together with KPI 2: low ERP gap + low AI adoption = digitally mature but AI-greenfield, often the best AI target.\nHow it's computed: % of businesses answering yes to CBS's headline 'AI gebruikt' question (2025 ICT survey, 86119NED), using CBS's own all-sizes row '10 of meer werkzame personen' -- the survey only covers businesses with 10+ working persons, and the 10-50 / 50-250 / 250+ rows are its parts, so they are not averaged in. If several CBS columns share the 'A I Gebruikt' label, the lowest-numbered one is used. Next to it: % not using AI, the number of businesses with 10+ staff in that industry (86280NED/81589NED, latest quarter), and the estimated number of those using AI (% x count).",
+    diag: { tables: ["86119NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["a i", "kunstmatige"], conceptFilter: RX_AI, firstColumnOnly: true },
+    diag2: { tables: ["86280NED", "81589NED"], relType: "HAS_BRANCH", targetLabel: "Branch", keywords: ["werkzame", "bedrijven"], conceptFilter: RX_SIZE_10PLUS },
+    drillLatestOnly: true,
+    drillUsedDim: /^10 (of|en) meer werkzame personen/i,
+    showCompanies: true,
+    companyNote: "Whether each company uses AI isn't in this data -- the CBS % above is the chance for a company in this industry.",
+    valueSuffix: "%",
+    valueHeader: "% using AI",
+    extraCols: [
+      { key: "pctWithout", header: "% not using AI", fmt: "pct" },
+      { key: "biz10", header: "Businesses (10+ staff)", fmt: "int", subKey: "bizParts", subFmt: "sum" },
+      { key: "bizUsing", header: "Est. businesses using AI", fmt: "int" },
+      { key: "bizAll", header: "Out of: all businesses", fmt: "int", subKey: "biz10", subFmt: "shareOf" },
+      { key: "indRevenueMln", header: "Industry revenue (€ mln, CBS)", fmt: "int" },
+      { key: "indWorkersK", header: "People working (x 1,000)", fmt: "int" },
+    ],
+    rowDetail: r => [
+      `${kpiP(r.value)} use AI, ${kpiP(r.extra[0])} don't`,
+      r.extra[1] == null ? '' : `about ${kpiN(r.extra[2])} of ${kpiN(r.extra[1])} businesses with 10+ staff` + (r.sub && r.sub[1] && r.sub[1].length ? ` (= ${r.sub[1].map(kpiN).join(' + ')})` : ''),
+      r.extra[3] == null ? '' : `out of ${kpiN(r.extra[3])} businesses of all sizes` + (r.extra[1] ? ` (${kpiP(100 * r.extra[1] / r.extra[3])} have 10+ staff)` : ''),
+      industryRevenueLine(r.extra[4], r.extra[5]),
+    ],
+    insightNote: r => (r.extra[1] == null || r.extra[2] == null) ? '' :
+      `about ${Number(r.extra[2]).toLocaleString()} of ${Number(r.extra[1]).toLocaleString()} businesses with 10+ staff` +
+      (r.extra[3] == null ? '' : `, out of ${Number(r.extra[3]).toLocaleString()} businesses of all sizes`),
+    cypher: `MATCH (x:Observation {sourceTable: 'cbs:86119NED'}) WITH max(x.sourcePulledAt) AS lp
+             MATCH (y:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(cy:Concept)
+             WHERE cy.prefLabelNl =~ '${RX_AI}'
+             WITH lp, cy, toInteger(last(split(cy.uri, '-'))) AS col
+             ORDER BY col ASC
+             WITH lp, collect(cy)[0] AS aiC
+             MATCH (y2:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(aiC)
+             WITH lp, aiC, max(y2.period) AS per
+             MATCH (o:Observation {sourceTable: 'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(aiC)
+             WHERE per IS NULL OR o.period = per
              MATCH (o)-[:HAS_BRANCH]->(b:Branch) WHERE b.prefLabelNl =~ '${RX_SECTION}'
-             ${kpiAvgPreferTotals("b")}
+             ${kpiAvgPreferTotals("b", RX_TOTAL_ICT)}
              WHERE pct >= 0 AND pct <= 100
-             RETURN b.prefLabelNl AS label, round(pct, 1) AS value
+             WITH b, round(pct, 1) AS aiPct
+             CALL {
+               WITH b
+               MATCH (ob:Observation)-[:HAS_BRANCH]->(b), (ob)-[:HAS_VARIABLE]->(cb:Concept)
+               WHERE ob.sourceTable IN ['cbs:86280NED', 'cbs:81589NED']
+                 AND (cb.prefLabelNl =~ '${RX_SIZE_10PLUS}' OR (toLower(cb.prefLabelNl) CONTAINS 'totaal' AND toLower(cb.prefLabelNl) CONTAINS 'bedrijven'))
+               WITH ob, cb, cb.prefLabelNl =~ '${RX_SIZE_10PLUS}' AS isBand
+               ORDER BY toInteger(last(split(cb.uri, '-'))) ASC
+               WITH ob.sourceTable AS t, ob.sourcePulledAt AS pa, ob.period AS per,
+                    sum(CASE WHEN isBand THEN ob.value END) AS v,
+                    sum(CASE WHEN NOT isBand THEN ob.value END) AS tot,
+                    collect(CASE WHEN isBand THEN ob.value END) AS parts
+               WHERE v IS NOT NULL
+               WITH t, max(pa) AS lp, collect({pa: pa, per: per, v: v, tot: tot, parts: parts}) AS xs
+               UNWIND xs AS x
+               WITH t, lp, x WHERE x.pa = lp
+               WITH t, x.per AS per, x
+               ORDER BY per DESC, t DESC
+               WITH collect(x)[0] AS best
+               RETURN best.v AS biz10, best.tot AS bizAll, best.parts AS bizParts
+             }
+             CALL {
+               WITH b
+               OPTIONAL MATCH (orv:Observation {sourceTable: 'cbs:81156NED'})-[:HAS_BRANCH]->(b)
+               OPTIONAL MATCH (orv)-[:HAS_VARIABLE]->(crv:Concept)
+               WITH orv, toLower(replace(replace(coalesce(crv.prefLabelNl, ''), ' ', ''), '-', '')) AS lbl
+               ORDER BY orv.sourcePulledAt DESC, orv.period DESC
+               WITH collect(CASE WHEN lbl = 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
+                    collect(CASE WHEN lbl = 'werkzamepersonen' THEN orv.value END)[0] AS indWorkersK
+               RETURN indRevenueMln, indWorkersK
+             }
+             RETURN b.prefLabelNl AS label, aiPct AS value, round(100 - aiPct, 1) AS pctWithout,
+                    biz10 AS biz10, bizParts AS bizParts, bizAll AS bizAll, CASE WHEN biz10 IS NULL THEN null ELSE round(aiPct / 100.0 * biz10) END AS bizUsing,
+                    indRevenueMln, indWorkersK
              ORDER BY value DESC`
   },
   {
@@ -1494,7 +1703,24 @@ async function runKpi(kpi, card) {
         if (value && typeof value === 'object' && typeof value.low === 'number') {
           value = typeof value.toNumber === 'function' ? value.toNumber() : value.low;
         }
-        return { label, value: typeof value === 'number' ? value : Number(value) };
+        // Optional extra columns (kpi.extraCols, KPI 2/3 only): e.g. the %
+        // and the 10+ business base, so the headline number can be checked.
+        const extra = (kpi.extraCols || []).map(c => {
+          let v = rec.has(c.key) ? rec.get(c.key) : null;
+          if (v && typeof v === 'object' && typeof v.low === 'number') v = typeof v.toNumber === 'function' ? v.toNumber() : v.low;
+          return v == null ? null : Number(v);
+        });
+        const plainNum = v => (v && typeof v === 'object' && typeof v.low === 'number') ? (typeof v.toNumber === 'function' ? v.toNumber() : v.low) : v;
+        const sub = (kpi.extraCols || []).map(c => {
+          if (!c.subKey || !rec.has(c.subKey)) return null;
+          const v = rec.get(c.subKey);
+          return Array.isArray(v) ? v.map(x => Number(plainNum(x))) : (v == null ? null : Number(plainNum(v)));
+        });
+        const row = { label, value: typeof value === 'number' ? value : Number(value), extra, sub };
+        if (kpi.valueSuffix) row.suffix = kpi.valueSuffix;
+        if (kpi.barNote) row.note = kpi.barNote(row);
+        if (kpi.insightNote) row.insight = kpi.insightNote(row);
+        return row;
       })
       .filter(r => r.label != null && !Number.isNaN(r.value));
     if (!rows.length) {
@@ -1631,7 +1857,7 @@ async function diagnoseKpi(kpi, card) {
 function drawKpiChart(svg, rows, limit) {
   const top = rows.slice(0, limit || 10); // card: top 10 for readability; Full-view modal passes rows.length
   const width = Math.max(svg.clientWidth || 320, 280);
-  const rowH = 20, rowGap = 8, leftPad = 150, rightPad = 55, topPad = 6;
+  const rowH = 20, rowGap = 8, leftPad = 150, rightPad = top.some(r => r.note) ? 105 : 55, topPad = 6;
   const max = Math.max(...top.map(r => Number(r.value)), 1);
   const barMaxW = width - leftPad - rightPad;
   const height = topPad * 2 + top.length * (rowH + rowGap);
@@ -1647,7 +1873,7 @@ function drawKpiChart(svg, rows, limit) {
       <g>
         <text x="${leftPad - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" font-size="10.5" fill="#555">${escapeHtml(label)}</text>
         <rect x="${leftPad}" y="${y}" width="${barW}" height="${rowH}" rx="3" fill="#2b6cb0" />
-        <text x="${leftPad + barW + 6}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="#333">${Number(r.value).toLocaleString()}</text>
+        <text x="${leftPad + barW + 6}" y="${y + rowH / 2 + 4}" font-size="10.5" fill="#333">${Number(r.value).toLocaleString()}${r.suffix || ''}${r.note ? ' · ' + escapeHtml(r.note) : ''}</text>
       </g>`;
   });
   svg.innerHTML = html;
@@ -1719,22 +1945,61 @@ function industryInsight(rows, kpi) {
     return `<strong>${topEn}</strong>: ${fmt(top.value)} ${escapeHtml(kpi.valueLabel)}.`;
   }
   const bottomEn = escapeHtml(translateLabel(bottom.label).en);
-  return `Highest: <strong>${topEn}</strong> at ${fmt(top.value)} ${escapeHtml(kpi.valueLabel)}. ` +
-         `Lowest of the ${rows.length} shown: ${bottomEn} at ${fmt(bottom.value)}. Click any row below for the underlying data.`;
+  const why = r => r.insight ? ` (${escapeHtml(r.insight)})` : '';
+  return `Highest: <strong>${topEn}</strong> at ${fmt(top.value)} ${escapeHtml(kpi.valueLabel)}${why(top)}. ` +
+         `Lowest of the ${rows.length} shown: ${bottomEn} at ${fmt(bottom.value)}${why(bottom)}. Click any row below for the underlying data.`;
 }
 
 // Builds the (bilingual, click-to-drill) table body shared by both the
 // card's own table and the Full-view modal's table, so the two never
 // drift out of sync.
+// Number / percent formatting for KPI detail lines.
+function kpiN(v) { return v == null ? '--' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
+// CBS 81156NED: net revenue (mln euro) and people working (x 1,000) per industry.
+function revenuePerWorker(revMln, workersK) {
+  return (revMln && workersK) ? (revMln * 1e6) / (workersK * 1e3) : null;
+}
+function industryRevenueLine(revMln, workersK) {
+  if (revMln == null) return '';
+  const rpw = revenuePerWorker(revMln, workersK);
+  return `industry revenue ${fmtEuro(revMln * 1e6)} (CBS)` + (rpw ? ` · ~${fmtEuro(rpw)} per person working` : '');
+}
+function kpiP(v) { return v == null ? '--' : `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`; }
+
 function buildKpiTableRows(tbody, rows, kpi) {
   tbody.innerHTML = '';
+  const cols = kpi.extraCols || [];
+  const tableEl = tbody.parentElement;
+  // The card is narrow: there the extra figures go as short lines under the
+  // industry name. The Full-view modal is wide: there they get own columns.
+  const wide = !!(tableEl && tableEl.closest('.kpi-modal-body'));
+  const showCols = wide ? cols : [];
+  const oldHead = tableEl && tableEl.querySelector('thead');
+  if (oldHead) oldHead.remove();
+  if (cols.length && tableEl) {
+    const th = document.createElement('thead');
+    th.innerHTML = `<tr><th>Industry</th><th>${escapeHtml(kpi.valueHeader || kpi.valueLabel)}</th>${showCols.map(c => `<th>${escapeHtml(c.header)}</th>`).join('')}</tr>`;
+    tableEl.insertBefore(th, tbody);
+  }
+  const fmtExtra = (v, c) => v == null ? '--' : (c.fmt === 'pct' ? kpiP(v) : kpiN(v));
   rows.forEach(r => {
     const tr = document.createElement('tr');
     tr.className = 'kpi-row-clickable';
     tr.title = 'Click for the underlying data behind this number';
     const t = translateLabel(r.label);
     const nlLine = t.en !== t.nl ? `<div class="kpi-label-nl">${escapeHtml(t.nl)}</div>` : '';
-    tr.innerHTML = `<td><strong>${escapeHtml(t.en)}</strong>${nlLine}</td><td>${Number(r.value).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>`;
+    const subLine = (c, i) => {
+      const v = r.sub ? r.sub[i] : null;
+      if (v == null) return '';
+      let txt = '';
+      if (c.subFmt === 'sum' && Array.isArray(v) && v.length) txt = '= ' + v.map(x => x.toLocaleString()).join(' + ');
+      if (c.subFmt === 'shareOf' && r.extra[i]) txt = `${(100 * v / r.extra[i]).toLocaleString(undefined, { maximumFractionDigits: 1 })}% have 10+ staff`;
+      return txt ? `<div class="kpi-label-nl">${escapeHtml(txt)}</div>` : '';
+    };
+    const detail = (!wide && kpi.rowDetail) ? kpi.rowDetail(r).filter(Boolean) : [];
+    const detailHtml = detail.length ? `<div class="kpi-row-detail">${detail.map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>` : '';
+    const extraCells = showCols.map((c, i) => `<td>${fmtExtra(r.extra ? r.extra[i] : null, c)}${subLine(c, i)}</td>`).join('');
+    tr.innerHTML = `<td><strong>${escapeHtml(t.en)}</strong>${nlLine}${detailHtml}</td><td>${Number(r.value).toLocaleString(undefined, { maximumFractionDigits: 2 })}${r.suffix || ''}</td>${extraCells}`;
     tr.onclick = () => toggleDrill(kpi, r.label, tr);
     tbody.appendChild(tr);
   });
@@ -1746,10 +2011,32 @@ function buildKpiTableRows(tbody, rows, kpi) {
 // OPTIONAL MATCH on Concept means one query shape covers KPI 1/4/5 (no
 // HAS_VARIABLE link at all -- concept just comes back null) as well as
 // KPI 2/3 (which do have one) without a separate query per KPI.
+// Concept-scoping for one diag block: if it declares conceptFilter (a
+// regex, e.g. RX_ERP) or conceptContainsAll (every keyword required,
+// e.g. ["totaal","bedrijven"] -- matches the AND-of-CONTAINS the KPI's
+// own headline query uses for the business-count measure), narrow to
+// just that measure; a diag block with neither (KPI 1/4/5, and KPI 2's
+// old behavior) matches everything in its table(s), unchanged.
+function conceptClause(spec) {
+  if (!spec) return '';
+  if (spec.conceptFilter) return ` AND c.prefLabelNl =~ '${spec.conceptFilter}'`;
+  if (spec.conceptContainsAll) return spec.conceptContainsAll.map(k => ` AND toLower(c.prefLabelNl) CONTAINS '${k.toLowerCase()}'`).join('');
+  return '';
+}
+
+// "Inside each industry", scoped to what the KPI's own number is built
+// from -- not just the right table(s), but (when the KPI declares it)
+// the right measure within them. Without this, KPI 2's drill-down showed
+// every question 86119NED happens to carry (ERP AND AI), not only the
+// ERP rows its own card is about -- diag.conceptFilter/conceptContainsAll
+// fixes that per-KPI while leaving KPIs with no concept filter (1, 4, 5,
+// and the regional ones) exactly as they were.
 function buildDrillCypher(kpi) {
-  const tableList = (kpi.diag && kpi.diag.tables) ? kpi.diag.tables : [];
-  const allTables = tableList.concat((kpi.diag2 && kpi.diag2.tables) ? kpi.diag2.tables : []);
-  const tables = allTables.map(t => `'cbs:${t}'`).join(', ');
+  const primaryTables = (kpi.diag && kpi.diag.tables) ? kpi.diag.tables : [];
+  const secondaryTables = (kpi.diag2 && kpi.diag2.tables) ? kpi.diag2.tables : [];
+  const primaryList = primaryTables.map(t => `'cbs:${t}'`).join(', ');
+  const secondaryList = secondaryTables.map(t => `'cbs:${t}'`).join(', ');
+  const allList = primaryTables.concat(secondaryTables).map(t => `'cbs:${t}'`).join(', ');
   // Regional KPIs (6-9) list regions, not industries -- drill through
   // ABOUT_REGION for those; KPI 5's industry may arrive via HAS_DIMENSION
   // (see the transform branch-alias fix), so industry drills accept both.
@@ -1757,11 +2044,182 @@ function buildDrillCypher(kpi) {
   const hop = isRegional
     ? `(o:Observation)-[:ABOUT_REGION]->(b:Region {prefLabelNl: $branchLabel})`
     : `(o:Observation)-[:HAS_BRANCH|HAS_DIMENSION]->(b {prefLabelNl: $branchLabel})`;
-  return `MATCH ${hop}
-          WHERE o.sourceTable IN [${tables}]
+  const primaryFilter = conceptClause(kpi.diag);
+  const secondaryFilter = conceptClause(kpi.diag2);
+  // The concept filter must run AFTER the OPTIONAL MATCH as a WITH ... WHERE.
+  // Written as the OPTIONAL MATCH's own WHERE it doesn't drop rows -- it
+  // only nulls out c, which showed every row with a blank Measure.
+  const scopeClause = secondaryTables.length
+    ? `((o.sourceTable IN [${primaryList}]${primaryFilter}) OR (o.sourceTable IN [${secondaryList}]${secondaryFilter}))`
+    : `o.sourceTable IN [${allList}]${primaryFilter}`;
+  const head = `MATCH ${hop}
+          WHERE o.sourceTable IN [${allList}]
           OPTIONAL MATCH (o)-[:HAS_VARIABLE]->(c:Concept)
-          RETURN o.period AS period, o.value AS value, c.prefLabelNl AS concept, o.sourceTable AS sourceTable
+          WITH o, c WHERE ${scopeClause}`;
+  const ret = `RETURN o.period AS period, o.value AS value, c.prefLabelNl AS concept, o.sourceTable AS sourceTable,
+                 o.sourcePulledAt AS pulledAt, c.uri AS conceptUri, [(o)-[:HAS_DIMENSION]->(d) | d.prefLabelNl] AS dimensions`;
+  if (!kpi.drillLatestOnly) {
+    return `${head}
+          ${ret}
           ORDER BY period DESC LIMIT 30`;
+  }
+  // drillLatestOnly (KPI 2, 3): show exactly the rows the headline number
+  // is built from -- latest pull per table, latest period per table, and
+  // for the secondary (business-count) tables only the one table/quarter
+  // the KPI picks (latest quarter, then the higher table id = 86280NED).
+  const secExpr = secondaryTables.length ? `o.sourceTable IN [${secondaryList}]` : 'false';
+  // firstColumnOnly (KPI 2): same rule as its headline query -- of several
+  // CBS columns sharing one label, only the lowest-numbered one is shown.
+  const firstCol = (kpi.diag && kpi.diag.firstColumnOnly) ? 'true' : 'false';
+  return `${head}
+          WITH o, c, ${secExpr} AS sec, toInteger(last(split(coalesce(c.uri, ''), '-'))) AS col
+          WITH o.sourceTable AS t, max(o.sourcePulledAt) AS lp, min(col) AS minCol, collect({o: o, c: c, sec: sec, col: col}) AS rs
+          UNWIND rs AS r
+          WITH t, lp, minCol, r WHERE r.o.sourcePulledAt = lp AND (r.sec OR NOT ${firstCol} OR r.col = minCol)
+          WITH t, r.sec AS sec, max(r.o.period) AS per, collect(r) AS rs
+          UNWIND rs AS r
+          WITH t, sec, per, r WHERE per IS NULL OR r.o.period = per
+          WITH collect({t: t, sec: sec, per: per, r: r}) AS xs
+          WITH xs, reduce(best = null, x IN [y IN xs WHERE y.sec] |
+                 CASE WHEN best IS NULL OR x.per > best.per OR (x.per = best.per AND x.t > best.t) THEN x ELSE best END) AS win
+          UNWIND xs AS x
+          WITH x, win WHERE NOT x.sec OR (x.t = win.t AND coalesce(x.per, '') = coalesce(win.per, ''))
+          WITH x.r.o AS o, x.r.c AS c
+          ${ret}
+          ORDER BY sourceTable DESC, concept, period DESC LIMIT 30`;
+}
+
+// ---- Drill-down display helpers (labels only -- no effect on numbers) ----
+// Plain-English name for a CBS measure label; raw label kept underneath.
+function drillMeasureLabel(raw) {
+  if (!raw) return { en: '', raw: '' };
+  let m;
+  if (/^e ?r ?p\b/i.test(raw) || /enterprise resource/i.test(raw)) return { en: 'Uses ERP software (% of businesses)', raw };
+  if (/^a ?i gebruikt/i.test(raw)) return { en: 'Uses AI (% of businesses)', raw };
+  if (/totaal/i.test(raw) && /bedrijven/i.test(raw)) return { en: 'Total businesses (count)', raw };
+  if ((m = raw.match(/^k_(\d+) ?Tot ?(\d+) Werkza/i))) return { en: `Businesses with ${m[1]}-${m[2]} employees (count)`, raw };
+  if ((m = raw.match(/^k_(\d+) Werkzame Personen Of Meer/i))) return { en: `Businesses with ${m[1]}+ employees (count)`, raw };
+  if ((m = raw.match(/^k_1 Werkza/i))) return { en: 'Businesses with 1 employee (count)', raw };
+  return { en: raw, raw };
+}
+// Business-count tables carry the size class in the measure itself (one
+// column per size class) rather than as a breakdown node -- read it there.
+function drillSizeFromConcept(raw) {
+  if (!raw) return '';
+  let m;
+  if ((m = raw.match(/^k_(\d+) ?Tot ?(\d+) Werkza/i))) return `${m[1]} tot ${m[2]} werkzame personen`;
+  if ((m = raw.match(/^k_(\d+) Werkzame Personen Of Meer/i))) return `${m[1]} of meer werkzame personen`;
+  if (/totaal/i.test(raw) && /bedrijven/i.test(raw)) return 'Totaal (all sizes)';
+  return '';
+}
+// Period as published; if CBS's row carries none (86119NED doesn't), say
+// which pull it came from instead of a bare "--".
+function drillPeriodLabel(r) {
+  if (r.period) return r.period;
+  if (!r.pulledAt) return '--';
+  const p = String(r.pulledAt);
+  const d = /^\d{8}T/.test(p) ? `${p.slice(0, 4)}-${p.slice(4, 6)}-${p.slice(6, 8)}` : p.slice(0, 10);
+  return `latest survey (pulled ${d})`;
+}
+
+// ---- Company layer (companies/ pipeline: KVK + GLEIF + Wikidata) -----
+// Lists the actual businesses in the clicked industry, largest first. CBS
+// itself never names companies -- these come from the company pipeline,
+// linked to the same :Branch node via each company's KVK SBI code.
+function fmtEuro(v) {
+  if (v == null) return '';
+  const a = Math.abs(v);
+  if (a >= 1e9) return `€${(v / 1e9).toLocaleString(undefined, { maximumFractionDigits: 1 })} bn`;
+  if (a >= 1e6) return `€${(v / 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 })} m`;
+  if (a >= 1e3) return `€${Math.round(v / 1e3).toLocaleString()}k`;
+  return `€${Math.round(v).toLocaleString()}`;
+}
+
+// Sales focus: only companies with revenue above this are listed. EUR 50m is
+// also the Dutch legal line between medium and large companies -- large ones
+// must publish full annual accounts including revenue.
+const TARGET_MIN_REVENUE = 50e6;
+const TARGET_MIN_STAFF = 100;   // companies with fewer working persons are never listed
+
+async function renderCompanyList(kpi, branchLabel, td) {
+  const box = document.createElement('div');
+  box.className = 'kpi-companies';
+  box.innerHTML = '<div class="kpi-drill-loading">Loading companies...</div>';
+  td.appendChild(box);
+  const n = v => (v && typeof v === 'object' && typeof v.low === 'number') ? v.toNumber() : v;
+  const title = `<div class="kpi-drill-title" style="margin-top:10px">Target companies (${TARGET_MIN_STAFF}+ staff, revenue &gt; ${escapeHtml(fmtEuro(TARGET_MIN_REVENUE))})</div>`;
+  try {
+    // 1. Industry revenue per person working (CBS 81156NED) -> estimate for
+    //    companies whose revenue isn't published. Clearly labelled as estimate.
+    let rpw = null, rpwNote = '';
+    try {
+      const ind = await runQuery(`
+        MATCH (o:Observation {sourceTable: 'cbs:81156NED'})-[:HAS_BRANCH]->(:Branch {prefLabelNl: $branchLabel})
+        MATCH (o)-[:HAS_VARIABLE]->(c:Concept)
+        WITH o, toLower(replace(replace(c.prefLabelNl, ' ', ''), '-', '')) AS lbl
+        WHERE lbl IN ['nettoomzet', 'werkzamepersonen']
+        WITH lbl, o ORDER BY o.sourcePulledAt DESC, o.period DESC
+        WITH lbl, collect(o)[0] AS latest
+        RETURN lbl, latest.value AS value, latest.period AS period`, { branchLabel });
+      const m = {}; let per = '';
+      ind.records.forEach(x => { m[x.get('lbl')] = Number(n(x.get('value'))); per = x.get('period') || per; });
+      rpw = revenuePerWorker(m.nettoomzet, m.werkzamepersonen);
+      if (rpw) rpwNote = ` Where revenue isn't published it is estimated as staff × ${fmtEuro(rpw)} (this industry's revenue per person working, CBS ${per}).`;
+    } catch (e) { /* 81156NED not loaded yet: exact revenue only */ }
+
+    // 2. Companies above the revenue threshold (exact revenue first, else estimate), largest first.
+    const res = await runQuery(`
+      MATCH (b:Branch {prefLabelNl: $branchLabel})<-[:IN_BRANCH]-(c:Company)
+      WHERE coalesce(c.staff, 0) >= $minStaff OR (c.staff IS NULL AND c.revenue >= $minRev)
+      WITH c, CASE WHEN c.revenue IS NOT NULL THEN toFloat(c.revenue)
+                   WHEN $rpw IS NOT NULL AND c.staff IS NOT NULL THEN c.staff * $rpw END AS rev
+      WITH collect({c: c, rev: rev}) AS rows
+      WITH size(rows) AS total, size([x IN rows WHERE x.rev IS NULL]) AS unsized,
+           [x IN rows WHERE x.rev >= $minRev] AS hits
+      UNWIND (CASE WHEN size(hits) = 0 THEN [null] ELSE hits END) AS h
+      WITH total, unsized, size(hits) AS nHits, h ORDER BY h.rev DESC
+      WITH total, unsized, nHits, collect(h)[..25] AS top
+      RETURN total, unsized, nHits,
+             [x IN top WHERE x IS NOT NULL | x.c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource,
+               .lei, .parentName, .ultimateParentName, .website, .mainSbiDesc, .testData, .noMarketing, est: x.rev}] AS top`,
+      { branchLabel, rpw, minRev: TARGET_MIN_REVENUE, minStaff: TARGET_MIN_STAFF });
+    const rec = res.records[0];
+    const total = rec ? Number(n(rec.get('total'))) : 0;
+    const unsized = rec ? Number(n(rec.get('unsized'))) : 0;
+    const nHits = rec ? Number(n(rec.get('nHits'))) : 0;
+    const top = rec ? rec.get('top') : [];
+    if (!total) {
+      box.innerHTML = title + '<div class="kpi-drill-empty">No company data loaded yet. Run the companies/ pipeline '
+        + '(fetch_wikidata.py, fetch_gleif.py, build_companies.py, load_companies.py) to list the businesses behind this number.</div>';
+      return;
+    }
+    const counts = `${nHits.toLocaleString()} of ${total.toLocaleString()} loaded companies with ${TARGET_MIN_STAFF}+ staff in this industry have revenue above ${fmtEuro(TARGET_MIN_REVENUE)}`
+      + `${nHits > 25 ? ' -- showing the 25 largest' : ''}.`
+      + (unsized ? ` ${unsized.toLocaleString()} couldn't be sized (no revenue or staff count) and are left out.` : '');
+    if (!top.length) {
+      box.innerHTML = title + `<div class="kpi-drill-note">${escapeHtml(counts)}${escapeHtml(rpwNote)}</div>`;
+      return;
+    }
+    const rowsHtml = top.map(c => {
+      const staff = n(c.staff);
+      const exact = n(c.revenue);
+      const est = n(c.est);
+      const meta = [c.city, c.kvk ? `KVK ${c.kvk}` : '', c.mainSbiDesc, c.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+      const group = c.ultimateParentName || c.parentName;
+      const nmi = c.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out) -- don&#39;t approach for campaigns</div>' : '';
+      return `<tr><td>${escapeHtml(c.name || '--')}<div class="kpi-label-nl">${escapeHtml(meta)}</div>${nmi}`
+        + (group ? `<div class="kpi-label-nl">part of ${escapeHtml(group)}</div>` : '') + `</td>`
+        + `<td class="kpi-drill-val">${staff != null ? Number(staff).toLocaleString() : '--'}</td>`
+        + `<td class="kpi-drill-val">${exact != null
+            ? escapeHtml(fmtEuro(exact)) + `<div class="kpi-label-nl">${escapeHtml([c.revenueYear, c.revenueSource].filter(Boolean).join(', '))}</div>`
+            : `~${escapeHtml(fmtEuro(est))}<div class="kpi-label-nl">estimate</div>`}</td></tr>`;
+    }).join('');
+    box.innerHTML = title
+      + `<div class="kpi-drill-note">${escapeHtml(counts)} ${escapeHtml(kpi.companyNote || '')}${escapeHtml(rpwNote)}</div>`
+      + `<table class="kpi-drill-table compact"><thead><tr><th>Company</th><th class="kpi-drill-val">Staff</th><th class="kpi-drill-val">Revenue</th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  } catch (e) {
+    box.innerHTML = title + '<div class="kpi-drill-empty">Company list failed: ' + escapeHtml(e.message) + '</div>';
+  }
 }
 
 async function toggleDrill(kpi, branchLabel, tr) {
@@ -1782,7 +2240,7 @@ async function toggleDrill(kpi, branchLabel, tr) {
   const detailTr = document.createElement('tr');
   detailTr.className = 'kpi-drill-row';
   const td = document.createElement('td');
-  td.colSpan = 2;
+  td.colSpan = tr.children.length;
   td.innerHTML = '<div class="kpi-drill-loading">Loading detail...</div>';
   detailTr.appendChild(td);
   tr.after(detailTr);
@@ -1803,23 +2261,52 @@ async function toggleDrill(kpi, branchLabel, tr) {
     const result = await runQuery(buildDrillCypher(kpi), { branchLabel });
     const rows = result.records.map(rec => ({
       period: rec.get('period'),
+      pulledAt: rec.get('pulledAt'),
       value: formatNeoValue(rec.get('value')),
       concept: rec.get('concept'),
+      conceptUri: rec.get('conceptUri'),
       sourceTable: rec.get('sourceTable'),
+      // Company-size (or other) breakdown of this row, e.g. "10 tot 50
+      // werkzame personen". Empty = no breakdown node on this row.
+      dimensions: (rec.get('dimensions') || []).filter(Boolean),
     }));
     if (!rows.length) {
       td.innerHTML = '<div class="kpi-drill-empty">No underlying observations found for this industry.</div>';
       return;
     }
     const hasConcept = rows.some(r => r.concept);
+    const hasDimension = rows.some(r => r.dimensions.length || drillSizeFromConcept(r.concept));
+    const usedNote = kpi.drillUsedDim ? '<div class="kpi-drill-note">&#10003; = the row used in this KPI\'s calculation.</div>' : '';
+    // KPI 2/3: 3 compact columns (period, source table and CBS column go
+    // under the measure) so the drill-down fits inside a narrow card.
+    const compact = !!kpi.drillLatestOnly;
+    const rowHtml = r => {
+      const m = drillMeasureLabel(r.concept);
+      const colNo = (String(r.conceptUri || '').match(/-(\d+)$/) || [])[1];
+      const dimText = r.dimensions.length ? r.dimensions.join(', ') : (drillSizeFromConcept(r.concept) || '--');
+      const used = kpi.drillUsedDim && r.dimensions.some(d => kpi.drillUsedDim.test(d));
+      const src = String(r.sourceTable || '').replace('cbs:', '');
+      if (compact) {
+        const meta = [m.raw !== m.en ? m.raw : '', colNo ? `CBS column ${colNo}` : '', src, drillPeriodLabel(r)].filter(Boolean).join(' · ');
+        return `<tr${used ? ' class="kpi-drill-used"' : ''}><td>${escapeHtml(m.en || m.raw || '--')}<div class="kpi-label-nl">${escapeHtml(meta)}</div></td><td>${escapeHtml(dimText)}${used ? ' &#10003;' : ''}</td><td class="kpi-drill-val">${escapeHtml(r.value)}</td></tr>`;
+      }
+      const rawLine = m.raw + (colNo ? ` · CBS column ${colNo}` : '');
+      const measureCell = m.en === m.raw && !colNo
+        ? escapeHtml(m.raw || '--')
+        : `${escapeHtml(m.en)}<div class="kpi-label-nl">${escapeHtml(rawLine)}</div>`;
+      return `<tr><td>${escapeHtml(drillPeriodLabel(r))}</td>${hasConcept ? `<td>${measureCell}</td>` : ''}${hasDimension ? `<td>${escapeHtml(dimText)}${used ? ' &#10003;' : ''}</td>` : ''}<td>${escapeHtml(r.value)}</td><td>${escapeHtml(src)}</td></tr>`;
+    };
+    const headHtml = compact
+      ? '<th>Measure</th><th>Size group</th><th class="kpi-drill-val">Value</th>'
+      : `<th>Period</th>${hasConcept ? '<th>Measure</th>' : ''}${hasDimension ? '<th>Size group / breakdown</th>' : ''}<th>Value</th><th>Source table</th>`;
     td.innerHTML = `
       <div class="kpi-drill-title">${escapeHtml(translateLabel(branchLabel).en)} -- underlying data</div>
-      <table class="kpi-drill-table">
-        <thead><tr><th>Period</th>${hasConcept ? '<th>Measure</th>' : ''}<th>Value</th><th>Source table</th></tr></thead>
-        <tbody>
-          ${rows.map(r => `<tr><td>${escapeHtml(r.period || '--')}</td>${hasConcept ? `<td>${escapeHtml(r.concept || '--')}</td>` : ''}<td>${escapeHtml(r.value)}</td><td>${escapeHtml(String(r.sourceTable || '').replace('cbs:', ''))}</td></tr>`).join('')}
-        </tbody>
+      ${usedNote}
+      <table class="kpi-drill-table${compact ? ' compact' : ''}">
+        <thead><tr>${headHtml}</tr></thead>
+        <tbody>${rows.map(rowHtml).join('')}</tbody>
       </table>`;
+    if (kpi.showCompanies) renderCompanyList(kpi, branchLabel, td);
   } catch (e) {
     td.innerHTML = 'Drill-down query failed: ' + escapeHtml(e.message);
   }
@@ -1965,6 +2452,436 @@ function showDetail(node) {
   html += '<div class="hint">Double-click this node on the canvas to expand its neighbors.</div>';
   document.getElementById('nodeDetail').innerHTML = html;
 }
+
+// =====================================================================
+// Ask-the-data chat. Question -> LLM writes read-only Cypher (grounded in
+// the schema below + a LIVE catalog of what's actually loaded) -> runs in
+// a READ-mode Neo4j session -> LLM answers ONLY from the returned rows.
+// The Groq key lives in this page's memory only (never saved to the file,
+// localStorage or the repo) -- demo mode; move the LLM call behind a small
+// backend (e.g. an Azure Function) before sharing the page with clients.
+// =====================================================================
+const GROQ_URL = 'https://api.groq.com/openai/v1';
+const CHAT = { history: [], catalog: null, busy: false };
+const CHAT_MAX_ROWS = 50;
+
+const CHAT_SCHEMA_DOC = `You translate business questions about the Dutch economy into Cypher for a Neo4j graph built from CBS StatLine open data (Statistics Netherlands).
+
+GRAPH MODEL
+Nodes (every node also carries :Entity and a uri property):
+- (:Observation) = one published number. Properties: value (float), sourceTable (e.g. 'cbs:81578NED' -- ALWAYS written with the 'cbs:' prefix), period (e.g. '2026', '2026 2e kwartaal', may be null), sourcePulledAt (ISO timestamp of the CBS pull), marginType, seasonalAdjustment (optional raw strings).
+- (:Concept) = WHAT is measured. prefLabelNl (Dutch label), prefLabelEn, unit, topic, definition. Auto-generated labels put spaces before capitals, e.g. 'A I Gebruikt', 'E R P Software', 'Saldo Economisch Klimaat Komende3 Mnd'.
+- (:DimensionValue:Branch) = industry (SBI). prefLabelNl like 'G Handel'. The 21 top-level sections match '^[A-Z] .*'. 'A-U Alle economische activiteiten' is the all-industries total; 'G-I ...' style labels are groups of sections.
+- (:Region) plus exactly one of :Gemeente (municipality), :CoropGebied (40 COROP regions), :Provincie, :Landsdeel, :Wijk, :Buurt. prefLabelNl = region name.
+- (:DimensionValue:OtherDimension) = any extra breakdown (sex, age, type of self-employed, ...). dimensionKey = CBS column name, prefLabelNl = member. Total members start with 'Totaal'.
+- (:DimensionValue:RegioCategory), (:DimensionValue:Country), (:DimensionValue:ServiceCategory), (:DimensionValue:TradeDirection).
+- (:Dataset) label = CBS table title.
+- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP/AI use per company is NOT known -- never claim it; use the industry % from 86119NED as a likelihood. TARGET COMPANIES = 100 or more working persons (c.staff >= 100) AND revenue above 50 million euro. Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 50 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
+Relationships (all start at an Observation): HAS_VARIABLE->Concept, HAS_BRANCH->Branch, ABOUT_REGION->Region, HAS_DIMENSION->OtherDimension, IN_DATASET->Dataset, HAS_REGIO_CATEGORY, HAS_COUNTRY, HAS_SERVICE_CATEGORY, HAS_TRADE_DIRECTION. Region hierarchy: (:Region)-[:PART_OF]->(:Region).
+
+TABLES LOADED (sourceTable -> content)
+- cbs:81589NED (SBI 2008), cbs:86280NED (SBI 2025, prefer this one): number of businesses per industry per quarter. Total concept contains 'totaal' and 'bedrijven'. Size classes are separate concepts with auto-labels like 'k_10 Tot20 Werkzame Personen', 'k_20 Tot50 ...', 'k_50 Tot100 ...', 'k_100 Werkzame Personen Of Meer' (10-19, 20-49, 50-99, 100+ working persons); 'k_0 Tot50' and 'k_0 Tot250' are cumulative -- never add them to other classes.
+- cbs:81578NED: business establishments (vestigingen) per industry per region (Gemeente = 23 large cities only, CoropGebied, Provincie, Landsdeel).
+- cbs:83631NED: openings of establishments; cbs:83635NED: closures -- per industry per region (CoropGebied, Provincie, Landsdeel).
+- cbs:80567NED: vacancy rate = open vacancies per 1,000 jobs, per industry. Industry is linked via HAS_BRANCH|HAS_DIMENSION (dimensionKey 'SBI2008').
+- cbs:86119NED: ICT survey 2025, values are % of businesses using ERP software ('E R P Software') / using AI ('A I Gebruikt'), per industry. Covers ONLY businesses with 10 or more working persons. period is null (single-year table) -- call it 'the 2025 ICT survey'.
+- cbs:84466NED: number of self-employed (concept 'Zelfstandigen') per industry, with OtherDimension breakdowns Geslacht, Kenmerken (includes age bands like 'Leeftijd: 55 tot 65 jaar'; total 'Totaal personen'), TypeZelfstandige (total 'Totaal (Zelfstandige)').
+- cbs:85610NED: regional business survey balances (concepts starting 'Saldo': % positive minus % negative answers, -100..+100) per region.
+- cbs:81156NED: per industry (SBI 2008 top-level sections), latest year: net revenue ('Netto Omzet', million euro) and people working ('Werkzame Personen', x 1,000). Revenue per person working = 1000 * omzet / werkzame personen (euro). Match concepts with toLower(replace(c.prefLabelNl, ' ', '')) = 'nettoomzet' / 'werkzamepersonen'.
+- cbs:86165NED: municipality key figures per Gemeente: 'Aantal inwoners', 'Bedrijfsvestigingen totaal', 'Huishoudens totaal', 'Gemiddelde WOZ-waarde woningen', 'Gemiddeld inkomen per inwoner'.
+
+RULES
+1. READ-ONLY: only MATCH, OPTIONAL MATCH, WITH, WHERE, UNWIND, RETURN, ORDER BY, LIMIT, CALL { subquery }. Never CREATE, MERGE, SET, DELETE, REMOVE, DROP, LOAD CSV, apoc or dbms.
+2. Always filter Observations by sourceTable (with the 'cbs:' prefix).
+3. A table can have several pulls: restrict to the newest one, e.g.
+   MATCH (x:Observation {sourceTable:'cbs:80567NED'}) WITH max(x.sourcePulledAt) AS lp
+   MATCH (o:Observation {sourceTable:'cbs:80567NED', sourcePulledAt: lp}) ...
+4. When summing across industries use only top-level sections (b.prefLabelNl =~ '^[A-Z] .*') so nothing is double-counted. When a table has OtherDimension breakdowns, keep them at their 'Totaal' member unless the question is about that breakdown.
+5. Match concepts and names case-insensitively AND ignoring spaces, because auto-generated labels are split into single letters ('A I Gebruikt' = AI used, 'E R P Software' = ERP software). Always compare like this: toLower(replace(c.prefLabelNl, ' ', '')) CONTAINS 'aigebruikt'. Labels are Dutch. Copy concept wording from the LIVE CATALOG below -- never invent English labels like 'AI adoption'.
+6. Gemeente names exist from both 81578NED and 86165NED; always go through the Observation's sourceTable.
+7. Return readable ENGLISH snake_case column aliases (industry, region, period, pct_using_erp, pct_without_erp, businesses, vacancies_per_1000_jobs...) -- never Dutch aliases. Only return period when it is not null. Always end with LIMIT (max 50).
+8. If the question cannot be answered from these tables, do not write a query -- explain what data is available instead.
+
+ACCURACY RULES (these make answers match the KPI dashboard -- follow them strictly)
+A. ONE number per row. Never avg()/sum() different measures together, and never average a total with its own parts. If your result would need averaging several rows for one industry/region, you picked the wrong rows.
+B. 86119NED (ERP / AI):
+   - Two different CBS columns are both labelled 'E R P Software' (uses ERP software, and buys ERP as a cloud service). Use ONLY the lowest-numbered one: the column number is the last '-' part of c.uri. Pick it with: WITH lp, cy ORDER BY toInteger(last(split(cy.uri, '-'))) ASC WITH lp, collect(cy)[0] AS c. Apply the same rule to 'A I Gebruikt'.
+   - Each value is split by company size (HAS_DIMENSION): '10 tot 50 werkzame personen', '50 tot 250 ...', '250 of meer ...' and '10 of meer werkzame personen'. '10 of meer werkzame personen' IS the total for the whole survey -- use only that row unless the question is about company size.
+   - '% without ERP' = 100 - '% using ERP'.
+C. 'How many businesses' for 86119NED questions: the % applies to businesses with 10+ working persons, so multiply by the SUM of the four 10+ size classes from 86280NED (latest pull, latest period) -- not by total businesses (mostly one-person firms).
+D. Latest data only: newest pull (rule 3) AND newest period for that table, unless the question asks for a trend.
+E. Ratios and percentages (vacancy rate, %, balances) are never summed. Counts (businesses, establishments, openings, closures) may be summed over top-level industry sections.
+F. 85610NED balances: prefer rows whose marginType contains 'waarde' and whose seasonalAdjustment contains 'gecorrigeerd' (not 'niet').
+G. 84466NED: keep Geslacht and TypeZelfstandige at their 'Totaal' member; age questions use the Kenmerken age bands.
+
+EXAMPLES
+Q: Which industries have the highest vacancy rate?
+MATCH (x:Observation {sourceTable:'cbs:80567NED'}) WITH max(x.sourcePulledAt) AS lp
+MATCH (o:Observation {sourceTable:'cbs:80567NED', sourcePulledAt: lp})-[:HAS_BRANCH|HAS_DIMENSION]->(b)
+WHERE b.prefLabelNl =~ '^[A-Z] .*'
+RETURN b.prefLabelNl AS industry, o.period AS period, o.value AS vacancies_per_1000_jobs ORDER BY vacancies_per_1000_jobs DESC LIMIT 25
+
+Q: Businesses per 1,000 residents in the 10 densest municipalities?
+MATCH (x:Observation {sourceTable:'cbs:86165NED'}) WITH max(x.sourcePulledAt) AS lp
+MATCH (r:Gemeente)<-[:ABOUT_REGION]-(o:Observation {sourceTable:'cbs:86165NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(c:Concept)
+WHERE c.prefLabelNl IN ['Aantal inwoners', 'Bedrijfsvestigingen totaal']
+WITH r, sum(CASE WHEN c.prefLabelNl = 'Aantal inwoners' THEN o.value END) AS pop, sum(CASE WHEN c.prefLabelNl = 'Bedrijfsvestigingen totaal' THEN o.value END) AS biz
+WHERE pop >= 5000
+RETURN r.prefLabelNl AS municipality, pop AS residents, biz AS establishments, round(1000.0 * biz / pop, 1) AS per_1000_residents ORDER BY per_1000_residents DESC LIMIT 10
+
+Q: Which industries are not using ERP?  (rule B: one ERP column, the '10 of meer' total row)
+MATCH (x:Observation {sourceTable:'cbs:86119NED'}) WITH max(x.sourcePulledAt) AS lp
+MATCH (y:Observation {sourceTable:'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(cy:Concept)
+WHERE toLower(replace(cy.prefLabelNl, ' ', '')) CONTAINS 'erpsoftware'
+WITH lp, cy ORDER BY toInteger(last(split(cy.uri, '-'))) ASC
+WITH lp, collect(cy)[0] AS c
+MATCH (b:Branch)<-[:HAS_BRANCH]-(o:Observation {sourceTable:'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(c)
+MATCH (o)-[:HAS_DIMENSION]->(d)
+WHERE b.prefLabelNl =~ '^[A-Z] .*' AND toLower(d.prefLabelNl) STARTS WITH '10 of meer'
+RETURN b.prefLabelNl AS industry, o.value AS pct_using_erp, round(100 - o.value, 1) AS pct_without_erp ORDER BY pct_without_erp DESC LIMIT 25
+(For AI use CONTAINS 'aigebruikt' and return pct_using_ai.)
+
+Q: How many businesses have no ERP, per industry?  (rule C: size by businesses with 10+ working persons)
+MATCH (x:Observation {sourceTable:'cbs:86119NED'}) WITH max(x.sourcePulledAt) AS lp
+MATCH (y:Observation {sourceTable:'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(cy:Concept)
+WHERE toLower(replace(cy.prefLabelNl, ' ', '')) CONTAINS 'erpsoftware'
+WITH lp, cy ORDER BY toInteger(last(split(cy.uri, '-'))) ASC
+WITH lp, collect(cy)[0] AS c
+MATCH (b:Branch)<-[:HAS_BRANCH]-(o:Observation {sourceTable:'cbs:86119NED', sourcePulledAt: lp})-[:HAS_VARIABLE]->(c)
+MATCH (o)-[:HAS_DIMENSION]->(d)
+WHERE b.prefLabelNl =~ '^[A-Z] .*' AND toLower(d.prefLabelNl) STARTS WITH '10 of meer'
+WITH b, round(100 - o.value, 1) AS pct_without_erp
+MATCH (x2:Observation {sourceTable:'cbs:86280NED'}) WITH b, pct_without_erp, max(x2.sourcePulledAt) AS lp2
+MATCH (ob:Observation {sourceTable:'cbs:86280NED', sourcePulledAt: lp2})-[:HAS_BRANCH]->(b), (ob)-[:HAS_VARIABLE]->(cb:Concept)
+WHERE cb.prefLabelNl =~ '(?i)^k_(10 Tot ?20|20 Tot ?50|50 Tot ?100|100 Werkzame Personen Of Meer)( .*|$)'
+WITH b, pct_without_erp, ob.period AS period, sum(ob.value) AS businesses_10plus ORDER BY period DESC
+WITH b, pct_without_erp, collect(period)[0] AS period, collect(businesses_10plus)[0] AS businesses_10plus
+RETURN b.prefLabelNl AS industry, pct_without_erp, businesses_10plus, round(pct_without_erp / 100.0 * businesses_10plus) AS businesses_without_erp, period
+ORDER BY businesses_without_erp DESC LIMIT 25
+
+Q: Establishments per COROP region?
+MATCH (x:Observation {sourceTable:'cbs:81578NED'}) WITH max(x.sourcePulledAt) AS lp
+MATCH (r:CoropGebied)<-[:ABOUT_REGION]-(o:Observation {sourceTable:'cbs:81578NED', sourcePulledAt: lp})-[:HAS_BRANCH]->(b:Branch)
+WHERE b.prefLabelNl =~ '^[A-Z] .*'
+RETURN r.prefLabelNl AS region, sum(o.value) AS establishments ORDER BY establishments DESC LIMIT 50
+
+OUTPUT: reply with ONE JSON object only:
+{"cypher": "<query or null>", "explanation": "<one short sentence: what the query computes>", "no_query_answer": "<only when cypher is null>"}`;
+
+const CHAT_ANSWER_DOC = `You are a business analyst explaining CBS (Statistics Netherlands) data to a non-technical sales or strategy audience.
+Answer the user's question using ONLY the query result rows provided. Rules:
+- Reply in the same language as the question (English or Dutch).
+- 2-6 sentences. Lead with the direct answer, then the most useful numbers (with units and period), then one short business takeaway if relevant.
+- Never invent numbers, regions or industries that are not in the rows. If the rows are empty, say no matching data was found and suggest how to rephrase.
+- Round sensibly. Industry names are given as 'English (Dutch)': use the English name. Region and municipality names stay as they are (they are proper names).
+- State the scope when it matters: ERP/AI figures come from CBS's 2025 ICT survey and cover businesses with 10 or more working persons.
+- Say what a number means in plain words (e.g. '18% use ERP, so 82% don't'), never show raw column names like pct_without_erp.`;
+
+const CHAT_EXAMPLES = [
+  'Which industries have the highest vacancy rate right now?',
+  'Which 10 municipalities have the most businesses per 1,000 residents?',
+  'In which industries is AI adoption lowest?',
+  'Hoeveel inwoners en bedrijfsvestigingen heeft Utrecht?',
+  'Which COROP regions had more closures than openings?',
+  'Where are entrepreneurs most pessimistic about the next 3 months?',
+];
+
+function chatEsc(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+// Neo4j driver values -> plain JS (Integer, Node, Relationship, lists, maps).
+function chatPlain(v) {
+  if (v === null || v === undefined) return null;
+  if (neo4j.isInt && neo4j.isInt(v)) return v.inSafeRange() ? v.toNumber() : v.toString();
+  if (Array.isArray(v)) return v.map(chatPlain);
+  if (typeof v === 'object') {
+    if (v.properties && v.labels) return { labels: v.labels.filter(l => l !== 'Entity'), ...chatPlain(v.properties) };
+    if (v.properties && v.type) return { type: v.type, ...chatPlain(v.properties) };
+    const o = {};
+    for (const k of Object.keys(v)) o[k] = chatPlain(v[k]);
+    return o;
+  }
+  return v;
+}
+
+// Belt-and-braces: the session is READ mode (Aura itself rejects writes),
+// and the query text is also screened before it is ever sent.
+function chatIsReadOnly(cypher) {
+  const noStrings = cypher.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, "''");
+  return !/\b(CREATE|MERGE|DELETE|DETACH|SET|REMOVE|DROP|FOREACH|LOAD\s+CSV|apoc\.|dbms\.|db\.create|GRANT|DENY|REVOKE)\b/i.test(noStrings);
+}
+
+function chatEnsureLimit(cypher) {
+  let q = cypher.trim().replace(/;+\s*$/, '');
+  if (!/\bLIMIT\s+\d+\s*$/i.test(q)) q += `\nLIMIT ${CHAT_MAX_ROWS}`;
+  return q;
+}
+
+async function chatRead(cypher) {
+  const s = driver.session({ defaultAccessMode: neo4j.session.READ });
+  try {
+    const res = await s.run(cypher);
+    return res.records.map(rec => {
+      const row = {};
+      rec.keys.forEach(k => { row[k] = chatPlain(rec.get(k)); });
+      return row;
+    });
+  } finally {
+    await s.close();
+  }
+}
+
+// Live catalog: which concepts / breakdowns / region levels are really in
+// the graph right now, so the model uses exact labels instead of guessing.
+async function chatLoadCatalog() {
+  if (CHAT.catalog) return CHAT.catalog;
+  const lines = [];
+  try {
+    const concepts = await chatRead(`MATCH (o:Observation)-[:HAS_VARIABLE]->(c:Concept)
+      WITH o.sourceTable AS t, c.prefLabelNl AS concept, count(*) AS n ORDER BY t, n DESC
+      WITH t, sum(n) AS obs, collect(concept)[..25] AS concepts
+      RETURN t, obs, concepts ORDER BY t`);
+    lines.push('LIVE CATALOG -- concepts per table (observations):');
+    concepts.forEach(r => lines.push(`- ${r.t} (${r.obs} obs): ${r.concepts.join(' | ')}`));
+    const dims = await chatRead(`MATCH (o:Observation)-[:HAS_DIMENSION]->(d)
+      WITH o.sourceTable AS t, d.dimensionKey AS k, collect(DISTINCT d.prefLabelNl) AS vals
+      RETURN t, k, vals[..12] AS vals ORDER BY t, k`);
+    if (dims.length) {
+      lines.push('Breakdowns (OtherDimension) per table:');
+      dims.forEach(r => lines.push(`- ${r.t} ${r.k}: ${r.vals.join(' | ')}`));
+    }
+    const regions = await chatRead(`MATCH (r:Region)
+      WITH [l IN labels(r) WHERE NOT l IN ['Region', 'Entity']][0] AS level, count(*) AS n
+      RETURN level, n ORDER BY n DESC`);
+    lines.push('Region nodes per level: ' + regions.map(r => `${r.level || 'Region'}=${r.n}`).join(', '));
+  } catch (e) {
+    lines.push('(live catalog unavailable: ' + e.message + ')');
+  }
+  CHAT.catalog = lines.join('\n');
+  return CHAT.catalog;
+}
+
+async function chatLLM(messages, wantJson) {
+  const key = document.getElementById('chatKey').value.trim();
+  const model = document.getElementById('chatModel').value;
+  const body = { model, messages, temperature: 0 };
+  if (wantJson) body.response_format = { type: 'json_object' };
+  const call = () => fetch(GROQ_URL + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify(body),
+  });
+  let r = await call();
+  if (!r.ok && wantJson && r.status === 400) {  // some models don't support JSON mode
+    delete body.response_format;
+    r = await call();
+  }
+  if (!r.ok) {
+    const t = await r.text();
+    if (r.status === 401) throw new Error('Groq rejected the API key (401). Check the key in the field above.');
+    if (r.status === 404 || /model/i.test(t) && r.status === 400) throw new Error(`Model "${model}" isn't available for this key -- click "Load models" and pick another. (${r.status})`);
+    if (r.status === 429) throw new Error('Groq rate limit reached (429) -- wait a minute and ask again.');
+    throw new Error(`Groq API error ${r.status}: ${t.slice(0, 300)}`);
+  }
+  const j = await r.json();
+  return j.choices[0].message.content || '';
+}
+
+function chatParsePlan(text) {
+  let t = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try { return JSON.parse(t); } catch (e) { /* fall through */ }
+  const m = t.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch (e) { /* fall through */ } }
+  if (/\bMATCH\b/i.test(t)) return { cypher: t, explanation: '' };
+  return { cypher: null, no_query_answer: t };
+}
+
+// Column alias -> English header: 'pct_without_erp' -> '% without ERP'.
+function chatHeader(key) {
+  let h = String(key).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  h = h.replace(/\b(pct|perc|percent|percentage)\b/gi, '%')
+       .replace(/\berp\b/gi, 'ERP').replace(/\bai\b/gi, 'AI').replace(/\bsbi\b/gi, 'SBI')
+       .replace(/\bcorop\b/gi, 'COROP').replace(/\bnl\b/gi, 'NL')
+       .replace(/\b10plus\b/gi, '(10+ staff)').replace(/\b1000\b/g, '1,000');
+  return h.charAt(0).toUpperCase() + h.slice(1);
+}
+
+// Dutch SBI industry label -> { en, nl } (other strings pass through).
+function chatLabel(v) {
+  if (typeof v !== 'string') return null;
+  const t = translateLabel(v);
+  if (t.letter && t.en !== v) return { en: t.en, nl: v };
+  const m = drillMeasureLabel(v);
+  if (m.en && m.en !== v) return { en: m.en, nl: v };
+  return null;
+}
+
+// Copy of the rows with Dutch industry names written as 'English (Dutch)'
+// -- what the answer-writing model sees, so its summary is in English.
+function chatEnglishRows(rows) {
+  return rows.map(r => {
+    const o = {};
+    for (const k of Object.keys(r)) {
+      const l = chatLabel(r[k]);
+      o[k] = l ? `${l.en} (${l.nl})` : r[k];
+    }
+    return o;
+  });
+}
+
+function chatRenderTable(rows) {
+  if (!rows.length) return '<div class="chat-meta">No rows returned.</div>';
+  // Hide columns that are empty in every row (e.g. period for the 2025-only ICT survey).
+  const cols = Object.keys(rows[0]).filter(c => rows.some(r => r[c] !== null && r[c] !== undefined && r[c] !== ''));
+  const fmt = v => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (typeof v === 'object') return chatEsc(JSON.stringify(v));
+    const l = chatLabel(v);
+    if (l) return `${chatEsc(l.en)}<div class="kpi-label-nl">${chatEsc(l.nl)}</div>`;
+    return chatEsc(v);
+  };
+  return `<table><thead><tr>${cols.map(c => `<th>${chatEsc(chatHeader(c))}</th>`).join('')}</tr></thead><tbody>` +
+    rows.map(r => `<tr>${cols.map(c => `<td>${fmt(r[c])}</td>`).join('')}</tr>`).join('') + '</tbody></table>';
+}
+
+function chatFormatAnswer(text) {
+  return chatEsc(text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+}
+
+function chatAddMsg(cls, html) {
+  const log = document.getElementById('chatLog');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + cls;
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+async function chatAsk(question) {
+  question = (question || '').trim();
+  if (!question || CHAT.busy) return;
+  if (!driver) { chatAddMsg('chat-bot err', 'Connect to your Aura instance at the top of the page first.'); return; }
+  if (!document.getElementById('chatKey').value.trim()) { chatAddMsg('chat-bot err', 'Paste your Groq API key in the field above first.'); return; }
+
+  CHAT.busy = true;
+  document.getElementById('chatSend').disabled = true;
+  document.getElementById('chatInput').value = '';
+  chatAddMsg('chat-user', chatEsc(question));
+  const bot = chatAddMsg('chat-bot', '<span class="chat-thinking">Reading the graph schema...</span>');
+
+  try {
+    const catalog = await chatLoadCatalog();
+    const system = CHAT_SCHEMA_DOC + '\n\n' + catalog;
+    const msgs = [{ role: 'system', content: system }];
+    CHAT.history.slice(-4).forEach(h => {
+      msgs.push({ role: 'user', content: h.q });
+      msgs.push({ role: 'assistant', content: JSON.stringify({ cypher: h.cypher, explanation: h.explanation, result_preview: h.preview }) });
+    });
+    msgs.push({ role: 'user', content: question });
+
+    bot.innerHTML = '<span class="chat-thinking">Writing a query...</span>';
+    let plan = chatParsePlan(await chatLLM(msgs, true));
+
+    if (!plan.cypher) {
+      bot.innerHTML = chatFormatAnswer(plan.no_query_answer || plan.explanation || 'I could not turn that into a query on this data.');
+      CHAT.history.push({ q: question, cypher: null, explanation: plan.no_query_answer || '', preview: [] });
+      return;
+    }
+
+    let cypher = null, rows = null, lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      cypher = chatEnsureLimit(plan.cypher);
+      if (!chatIsReadOnly(cypher)) { lastErr = new Error('The generated query was not read-only, so it was blocked.'); break; }
+      bot.innerHTML = `<span class="chat-thinking">Running the query${attempt ? ' (corrected)' : ''}...</span>`;
+      try {
+        rows = await chatRead(cypher); lastErr = null;
+        if (rows.length === 0 && attempt === 0) {
+          // Most empty results are a wrong label or an over-strict filter,
+          // not truly missing data -- give the model one chance to relax it.
+          bot.innerHTML = '<span class="chat-thinking">No rows -- checking labels and retrying...</span>';
+          msgs.push({ role: 'assistant', content: JSON.stringify(plan) });
+          msgs.push({ role: 'user', content: 'That query ran but returned 0 rows. Re-check every concept/branch/region label against the LIVE CATALOG (compare with toLower(replace(x, \' \', \'\')) CONTAINS ...), drop any filter that is not strictly needed (period, seasonal adjustment, breakdowns), and return a corrected JSON object.' });
+          const retry = chatParsePlan(await chatLLM(msgs, true));
+          if (retry.cypher) { plan = retry; continue; }
+        }
+        break;
+      }
+      catch (e) {
+        lastErr = e;
+        if (attempt === 0) {  // one self-repair round with the real Neo4j error
+          bot.innerHTML = '<span class="chat-thinking">Query failed -- asking the model to fix it...</span>';
+          msgs.push({ role: 'assistant', content: JSON.stringify(plan) });
+          msgs.push({ role: 'user', content: `That query failed in Neo4j with: ${e.message}\nReturn a corrected JSON object.` });
+          plan = chatParsePlan(await chatLLM(msgs, true));
+          if (!plan.cypher) break;
+        }
+      }
+    }
+    if (lastErr || !rows) throw lastErr || new Error('No query could be run.');
+
+    bot.innerHTML = '<span class="chat-thinking">Summarising the result...</span>';
+    const answer = await chatLLM([
+      { role: 'system', content: CHAT_ANSWER_DOC },
+      { role: 'user', content: `Question: ${question}\nWhat the query computed: ${plan.explanation || ''}\nResult rows (${rows.length}${rows.length >= CHAT_MAX_ROWS ? ', truncated' : ''}):\n${JSON.stringify(chatEnglishRows(rows.slice(0, CHAT_MAX_ROWS)))}` },
+    ], false);
+
+    bot.innerHTML = chatFormatAnswer(answer) +
+      `<div class="chat-meta">${chatEsc(plan.explanation || '')} &middot; ${rows.length} row(s)</div>` +
+      `<details><summary>Cypher query used</summary><pre>${chatEsc(cypher)}</pre></details>` +
+      `<details><summary>Result rows</summary>${chatRenderTable(rows)}</details>`;
+    CHAT.history.push({ q: question, cypher, explanation: plan.explanation || '', preview: rows.slice(0, 5) });
+  } catch (e) {
+    bot.className = 'chat-msg chat-bot err';
+    bot.innerHTML = 'Sorry -- ' + chatEsc(e.message || String(e)) +
+      (/Failed to fetch/i.test(String(e.message)) ? '<div class="chat-meta">The browser could not reach api.groq.com (network, VPN/proxy or browser extension blocking it).</div>' : '');
+  } finally {
+    CHAT.busy = false;
+    document.getElementById('chatSend').disabled = false;
+    const log = document.getElementById('chatLog');
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+async function chatLoadModels() {
+  const key = document.getElementById('chatKey').value.trim();
+  if (!key) { chatAddMsg('chat-bot err', 'Paste your Groq API key first.'); return; }
+  try {
+    const r = await fetch(GROQ_URL + '/models', { headers: { 'Authorization': 'Bearer ' + key } });
+    if (!r.ok) throw new Error(`Groq API ${r.status}`);
+    const ids = (await r.json()).data.map(m => m.id)
+      .filter(id => !/whisper|tts|guard|orpheus|playai/i.test(id)).sort();
+    const sel = document.getElementById('chatModel');
+    const cur = sel.value;
+    sel.innerHTML = ids.map(id => `<option value="${chatEsc(id)}">${chatEsc(id)}</option>`).join('');
+    sel.value = ids.includes(cur) ? cur : (ids.find(id => /70b|120b|large/i.test(id)) || ids[0]);
+  } catch (e) {
+    chatAddMsg('chat-bot err', 'Could not load models: ' + chatEsc(e.message));
+  }
+}
+
+(function initChat() {
+  const ex = document.getElementById('chatExamples');
+  CHAT_EXAMPLES.forEach(q => {
+    const b = document.createElement('button');
+    b.textContent = q;
+    b.onclick = () => chatAsk(q);
+    ex.appendChild(b);
+  });
+  document.getElementById('chatSend').onclick = () => chatAsk(document.getElementById('chatInput').value);
+  document.getElementById('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatAsk(e.target.value); }
+  });
+  document.getElementById('chatLoadModels').onclick = chatLoadModels;
+  document.getElementById('chatClear').onclick = () => {
+    CHAT.history = []; CHAT.catalog = null;
+    document.getElementById('chatLog').innerHTML = '';
+  };
+  chatAddMsg('chat-bot', 'Hi! Connect to Aura, paste your Groq key above, then ask anything about the loaded CBS data -- or click an example below.');
+})();
+
 </script>
 </body>
 </html>
