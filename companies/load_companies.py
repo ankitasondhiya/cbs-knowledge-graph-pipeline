@@ -49,20 +49,14 @@ FOREACH (_ IN CASE WHEN gm IS NULL THEN [] ELSE [1] END | MERGE (c)-[:LOCATED_IN
 WITH c, row WHERE row.parentLei IS NOT NULL
 OPTIONAL MATCH (k:Company {lei: row.parentLei})
 WITH c, row, collect(k)[0] AS known
-CALL {
-  WITH c, row, known
-  WITH c, row, known WHERE known IS NULL
+// parent not loaded as a company yet -> create a light parent node
+FOREACH (_ IN CASE WHEN known IS NULL THEN [1] ELSE [] END |
   MERGE (p:Entity {uri: $base + 'lei/' + row.parentLei})
   ON CREATE SET p:Company, p.lei = row.parentLei, p.name = row.parentName, p.parentOnly = true
-  MERGE (c)-[:SUBSIDIARY_OF]->(p)
-  RETURN count(*) AS createdParent
-}
-CALL {
-  WITH c, known
-  WITH c, known WHERE known IS NOT NULL AND known <> c
-  MERGE (c)-[:SUBSIDIARY_OF]->(known)
-  RETURN count(*) AS linkedParent
-}
+  MERGE (c)-[:SUBSIDIARY_OF]->(p))
+// parent already loaded -> link to it
+FOREACH (_ IN CASE WHEN known IS NOT NULL AND known <> c THEN [1] ELSE [] END |
+  MERGE (c)-[:SUBSIDIARY_OF]->(known))
 RETURN count(*) AS n
 """
 
