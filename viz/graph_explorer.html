@@ -1442,8 +1442,8 @@ const KPI_DEFINITIONS = [
                OPTIONAL MATCH (orv)-[:HAS_VARIABLE]->(crv:Concept)
                WITH orv, toLower(replace(replace(coalesce(crv.prefLabelNl, ''), ' ', ''), '-', '')) AS lbl
                ORDER BY orv.sourcePulledAt DESC, orv.period DESC
-               WITH collect(CASE WHEN lbl = 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
-                    collect(CASE WHEN lbl = 'werkzamepersonen' THEN orv.value END)[0] AS indWorkersK
+               WITH collect(CASE WHEN lbl STARTS WITH 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
+                    collect(CASE WHEN lbl CONTAINS 'werkzamepersonen' AND NOT lbl CONTAINS 'arbeidsvolume' THEN orv.value END)[0] AS indWorkersK
                RETURN indRevenueMln, indWorkersK
              }
              RETURN b.prefLabelNl AS label,
@@ -1523,8 +1523,8 @@ const KPI_DEFINITIONS = [
                OPTIONAL MATCH (orv)-[:HAS_VARIABLE]->(crv:Concept)
                WITH orv, toLower(replace(replace(coalesce(crv.prefLabelNl, ''), ' ', ''), '-', '')) AS lbl
                ORDER BY orv.sourcePulledAt DESC, orv.period DESC
-               WITH collect(CASE WHEN lbl = 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
-                    collect(CASE WHEN lbl = 'werkzamepersonen' THEN orv.value END)[0] AS indWorkersK
+               WITH collect(CASE WHEN lbl STARTS WITH 'nettoomzet' THEN orv.value END)[0] AS indRevenueMln,
+                    collect(CASE WHEN lbl CONTAINS 'werkzamepersonen' AND NOT lbl CONTAINS 'arbeidsvolume' THEN orv.value END)[0] AS indWorkersK
                RETURN indRevenueMln, indWorkersK
              }
              RETURN b.prefLabelNl AS label, aiPct AS value, round(100 - aiPct, 1) AS pctWithout,
@@ -2157,7 +2157,8 @@ async function renderCompanyList(kpi, branchLabel, td) {
         MATCH (o:Observation {sourceTable: 'cbs:81156NED'})-[:HAS_BRANCH]->(:Branch {prefLabelNl: $branchLabel})
         MATCH (o)-[:HAS_VARIABLE]->(c:Concept)
         WITH o, toLower(replace(replace(c.prefLabelNl, ' ', ''), '-', '')) AS lbl
-        WHERE lbl IN ['nettoomzet', 'werkzamepersonen']
+        WHERE (lbl STARTS WITH 'nettoomzet' OR lbl CONTAINS 'werkzamepersonen') AND NOT lbl CONTAINS 'arbeidsvolume'
+        WITH CASE WHEN lbl STARTS WITH 'nettoomzet' THEN 'nettoomzet' ELSE 'werkzamepersonen' END AS lbl, o
         WITH lbl, o ORDER BY o.sourcePulledAt DESC, o.period DESC
         WITH lbl, collect(o)[0] AS latest
         RETURN lbl, latest.value AS value, latest.period AS period`, { branchLabel });

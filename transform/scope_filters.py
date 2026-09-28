@@ -232,7 +232,10 @@ POC_MEASURES = {
     # Revenue per industry: net revenue (mln euro) + people working (x 1,000).
     # If CBS names these columns differently, _trim_measures' safety valve
     # keeps all measures (and prints a warning) rather than dropping the table.
-    "81156NED": re.compile(r"^(NettoOmzet|WerkzamePersonen)(Totaal)?_\d+$"),
+    # First version only matched 'WerkzamePersonen_N' and loaded revenue only (2026-09-28):
+    # the people-working column is named differently in the real table. Any column
+    # containing 'WerkzamePersonen' now counts, except labour volume (FTE, not people).
+    "81156NED": re.compile(r"^(NettoOmzet\w*|(?!Arbeidsvolume)\w*WerkzamePersonen\w*)_\d+$", re.I),
 }
 _MEASURE_KEY_RE = re.compile(r"_\d+$")
 
