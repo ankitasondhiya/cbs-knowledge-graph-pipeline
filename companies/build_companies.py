@@ -89,9 +89,15 @@ def main():
         if a.min_revenue and rev is not None and rev < a.min_revenue:
             skipped[f"published revenue below EUR {a.min_revenue / 1e6:,.0f}m"] += 1
             continue
+        name = p.get("name") or g.get("name")
+        if not name or re.fullmatch(r"Q\d+", name.strip()):    # Wikidata item without a label shows up as 'Q81307'
+            name = g.get("name")
+        if not name or re.fullmatch(r"Q\d+", name.strip()):
+            skipped["no readable company name (unlabelled Wikidata item)"] += 1
+            continue
         out.append({
             "kvk": p["kvk"],
-            "name": p.get("name") or g.get("name"),
+            "name": name,
             "legalName": g.get("name"),
             "tradeNames": p.get("tradeNames", []),
             "mainSbi": p.get("mainSbi"),
@@ -125,6 +131,15 @@ def main():
         })
 
     if a.free:
+        unmapped = Counter()
+        for c in out:
+            if not c["branchLabel"]:
+                for n in (wiki.get(c["kvk"], {}).get("industries") or ["(no industry on Wikidata)"])[:3]:
+                    unmapped[n] += 1
+        if unmapped:
+            print("  industry names on Wikidata that could NOT be mapped to a CBS industry (add keywords to INDUSTRY_KEYWORDS in common.py):")
+            for n, k in unmapped.most_common(40):
+                print(f"    {k:4}  {n}")
         no_ind = sum(1 for c in out if not c["branchLabel"])
         by_name = sum(1 for c in out if c.get("industrySource") == "wikidata industry name")
         print(f"  free mode: industry from NACE code: {sum(1 for c in out if c.get('industrySource') == 'wikidata NACE'):,}, "

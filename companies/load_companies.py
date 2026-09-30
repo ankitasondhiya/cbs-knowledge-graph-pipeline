@@ -44,6 +44,13 @@ UNWIND $rows AS row
 MERGE (c:Entity {uri: row.uri})
 SET c:Company, c += row.props
 WITH c, row
+// re-runs must REPLACE the industry / municipality link, not add a second one (a company had two industries)
+OPTIONAL MATCH (c)-[oldB:IN_BRANCH]->()
+DELETE oldB
+WITH DISTINCT c, row
+OPTIONAL MATCH (c)-[oldG:LOCATED_IN]->()
+DELETE oldG
+WITH DISTINCT c, row
 OPTIONAL MATCH (b:Branch {prefLabelNl: row.branchLabel})
 FOREACH (_ IN CASE WHEN b IS NULL THEN [] ELSE [1] END | MERGE (c)-[:IN_BRANCH]->(b))
 WITH c, row

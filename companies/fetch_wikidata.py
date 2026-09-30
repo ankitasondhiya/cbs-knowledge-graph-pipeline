@@ -101,6 +101,8 @@ def main():
             if rec["revenueYear"] is None or (year and year > rec["revenueYear"]):
                 rec.update(revenue=float(b["revenue"]["value"]), revenueYear=year,
                            revenueCurrency=b.get("unitLabel", {}).get("value"))
+    for rec in best.values():   # SPARQL row order varies between runs -> sort, so the industry picked is stable
+        rec["naceCodes"].sort(); rec["industries"].sort()
     rows = list(best.values())
     write_json(OUT, rows)
     print(f"Wikidata: {len(rows):,} companies with a KVK number, "
