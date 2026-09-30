@@ -24,7 +24,7 @@ import time
 
 import requests
 
-from common import LANDING, GLEIF_KVK_AUTHORITY, norm_kvk, read_json, write_json, append_jsonl, read_jsonl
+from common import LANDING, GLEIF_KVK_AUTHORITY, lenient_json, norm_kvk, read_json, write_json, append_jsonl, read_jsonl
 
 API = "https://api.gleif.org/api/v1"
 OUT = LANDING / "gleif_nl.jsonl"
@@ -56,7 +56,7 @@ def get(url, params=None):
             time.sleep(min(60, 5 * (attempt + 1)))
             continue
         r.raise_for_status()
-        return r.json()
+        return lenient_json(r)
     raise RuntimeError(f"GLEIF kept failing for {url}")
 
 
