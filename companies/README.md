@@ -87,3 +87,28 @@ Only companies with revenue above EUR 50m are targeted.
 - **ERP / AI per company is not in any of these sources.** The CBS % is the likelihood for the industry.
 - **Aura Free.** `load_companies.py` refuses to go past 90% of the 200k node / 400k relationship limit.
 - `load_companies.py --test` flags test companies `testData=true`; remove them with `--remove-test`.
+
+## ERP per company + revenue above EUR 10m (KPI 10)
+No public source says which ERP a company runs, so `erp_enrich.py` collects **evidence** and records how strong it is:
+
+| Confidence | Comes from |
+|---|---|
+| high | your own `--csv` facts: vendor customer references, annual reports, sales knowledge, a bought technographics export (BuiltWith / HG Insights) |
+| medium | `--detect`: the company's website links to / loads something belonging to an ERP product (e.g. `*.exactonline.nl`, `afasinsite`, `netsuite.com`) |
+| low | `--detect`: an ERP product is merely named in the text (a job ad asking for "SAP experience") |
+
+```
+python erp_enrich.py --csv my_erp_facts.csv        # columns: see erp_evidence.template.csv (put a file named erp_evidence.csv here and the Actions workflow uses it)
+python erp_enrich.py --detect --max 300            # free, best effort, robots.txt respected; expect a LOW hit rate
+python load_companies.py --erp-only                # (re)writes (:Company)-[:USES_ERP]->(:ERPSystem); companies untouched
+```
+Where nothing is known the dashboard says **unknown** and shows CBS's % of businesses in that industry using ERP -- it never guesses.
+
+**Revenue above EUR 10m.** Defaults are now EUR 10m and 20+ staff (`build_companies.py --min-revenue/--min-staff`).
+Exact revenue exists only where Wikidata has it (large companies); KVK and GLEIF carry no revenue. For everyone else the
+dashboard estimates revenue as staff x the industry's revenue per person working (CBS 81156NED) and labels it *estimate*.
+For real revenue of EUR 10-50m companies you need annual accounts (KVK "jaarrekeningen" / a commercial source such as
+Company.info or Graydon) -- add them as `revenue`/`revenueYear` in `companies.json` before `load_companies.py`.
+
+**Run from GitHub instead of your PC:** Actions -> *CBS companies* -> Run workflow (uses your `NEO4J_*` secrets; start with `dry_run=true`).
+Then open the dashboard -> KPI dashboard -> **KPI 10 -- Target accounts** -> Run.

@@ -78,6 +78,30 @@
   #kpiView { position: absolute; inset: 0; z-index: 9; padding: 22px 28px; overflow-y: auto; background: var(--bg); display: none; }
   #kpiView h2 { font-size: 15px; margin: 0 0 4px 0; }
   #kpiIntro { font-size: 12.5px; color: var(--muted); max-width: 720px; margin-bottom: 18px; line-height: 1.5; }
+  /* Target accounts panel (KPI 10): industry -> company -> revenue -> ERP */
+  #targetPanel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  #targetPanel h3 { font-size: 14px; margin: 2px 0 4px 0; }
+  #targetPanel .tp-blurb { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 10px; max-width: 900px; }
+  #targetPanel .tp-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 8px; }
+  #targetPanel .tp-controls label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; display: flex; flex-direction: column; gap: 3px; }
+  #targetPanel .tp-controls input[type=number] { width: 90px; }
+  #targetPanel .tp-controls label.tp-check { flex-direction: row; align-items: center; gap: 5px; text-transform: none; font-size: 12px; padding-bottom: 7px; }
+  #tpStatus { font-size: 11.5px; color: var(--muted); margin: 6px 0; min-height: 15px; }
+  #tpStatus.err { color: #c0392b; }
+  #tpSummary { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+  #tpSummary .tp-stat { background: #f5f7fa; border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+  #tpSummary .tp-stat b { display: block; font-size: 18px; }
+  #tpSummary .tp-stat span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; }
+  table.tp-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  table.tp-table th { text-align: left; font-size: 10.5px; color: #888; text-transform: uppercase; padding: 5px 6px; border-bottom: 1px solid #ddd; position: sticky; top: 0; background: var(--panel); }
+  table.tp-table td { padding: 6px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  table.tp-table td.num, table.tp-table th.num { text-align: right; white-space: nowrap; }
+  table.tp-table .tp-sub { font-size: 10.5px; color: #999; }
+  .tp-scroll { max-height: 560px; overflow: auto; }
+  .tp-erp { display: inline-block; font-weight: 600; }
+  .tp-conf { display: inline-block; font-size: 9.5px; padding: 1px 5px; border-radius: 8px; margin-left: 4px; color: #fff; vertical-align: middle; }
+  .tp-conf.high { background: #2e7d32; } .tp-conf.medium { background: #ef8f00; } .tp-conf.low { background: #9e9e9e; }
+  .tp-unknown { color: #999; }
   #kpiGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
   .kpi-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
   .kpi-card .kpi-num { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
@@ -285,12 +309,36 @@
   <div id="kpiView">
     <h2>Business KPI dashboard</h2>
     <div id="kpiIntro">
-      9 KPIs built from the tables actually landed in this graph -- 5 industry-level, 4 regional.
+      KPI 10 (top) lists the actual target companies -- industry, name, revenue and ERP. KPIs 1-9 below are built from the CBS tables landed in this graph -- 5 industry-level, 4 regional.
       Each card runs a real Cypher query against your Aura instance. First pass: queries group by
       the confirmed schema (Observation / Branch / Region / Concept, see load/README.md) and, where
       a table has more than one measure, match on the Dutch concept label CBS itself uses --
       re-check these against your <code>--scope poc</code> data once loaded, since not every
       concept is curated in glossary.py yet.
+    </div>
+    <div id="targetPanel">
+      <div class="kpi-num" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">KPI 10 -- industry &times; company</div>
+      <h3>Target accounts: industry, company, revenue and ERP</h3>
+      <div class="tp-blurb">
+        Named companies per CBS industry with revenue above your threshold, and which ERP each one uses.
+        Revenue is <b>exact</b> where published (Wikidata / annual accounts) and otherwise an <b>estimate</b>
+        (staff &times; the industry's revenue per person working, CBS 81156NED). ERP comes from evidence collected by
+        <code>companies/erp_enrich.py</code> (your own facts = high, website fingerprint = medium, text mention = low);
+        where nothing is known the row says so and shows CBS's share of businesses in that industry that use ERP.
+      </div>
+      <div class="tp-controls">
+        <label>Industry <select id="tpIndustry"><option value="">All industries</option></select></label>
+        <label>Min revenue (&euro; m) <input id="tpMinRev" type="number" min="0" step="1" value="10"></label>
+        <label>Min staff <input id="tpMinStaff" type="number" min="0" step="10" value="0"></label>
+        <label>ERP <select id="tpErp"><option value="">Any</option><option value="__known">ERP known</option><option value="__unknown">ERP unknown</option></select></label>
+        <label>Sort <select id="tpSort"><option value="rev">Revenue, high to low</option><option value="ind">Industry, then revenue</option></select></label>
+        <label class="tp-check"><input id="tpExact" type="checkbox"> exact revenue only</label>
+        <button id="tpRun">Run</button>
+        <button id="tpCsv" class="secondary" disabled>Download CSV</button>
+      </div>
+      <div id="tpStatus"></div>
+      <div id="tpSummary"></div>
+      <div class="tp-scroll"><table class="tp-table" id="tpTable" style="display:none"></table></div>
     </div>
     <div id="kpiGrid"></div>
   </div>
@@ -564,6 +612,11 @@ function setStatus(ok, text) {
   document.getElementById('statusText').textContent = text;
 }
 
+try {
+  const saved = JSON.parse(localStorage.getItem('cbsKgConn') || '{}');
+  if (saved.uri) document.getElementById('uri').value = saved.uri;
+  if (saved.user) document.getElementById('user').value = saved.user;
+} catch (e) { /* storage unavailable: just type them */ }
 document.getElementById('connectBtn').onclick = async () => {
   const uri = document.getElementById('uri').value.trim();
   const user = document.getElementById('user').value.trim();
@@ -583,6 +636,7 @@ document.getElementById('connectBtn').onclick = async () => {
   // setup steps (e.g. a rendering hiccup while drawing the starter graph)
   // is caught on its own below so it can't masquerade as "not connected".
   setStatus(true, 'connected');
+  try { localStorage.setItem('cbsKgConn', JSON.stringify({ uri, user })); } catch (e) { /* not fatal */ }
   renderPresetButtons();
   try { await discoverLabels(); } catch (e) { console.error('discoverLabels', e); }
   try { await populateBrowseLabels(); } catch (e) { console.error('populateBrowseLabels', e); }
@@ -1381,7 +1435,7 @@ const KPI_DEFINITIONS = [
     drillLatestOnly: true,
     drillUsedDim: /^10 (of|en) meer werkzame personen/i,
     showCompanies: true,
-    companyNote: "Which ERP each company uses isn't in this data -- the CBS % above is the chance for a company in this industry.",
+    companyNote: "ERP per company comes from collected evidence (erp_enrich.py) -- where none is known, the CBS % above is the chance for a company in this industry.",
     // Shown next to the estimate so it can be checked: estimate = % without ERP x businesses (10+ staff)
     valueHeader: "Est. businesses without ERP",
     extraCols: [
@@ -2135,11 +2189,10 @@ function fmtEuro(v) {
   return `€${Math.round(v).toLocaleString()}`;
 }
 
-// Sales focus: only companies with revenue above this are listed. EUR 50m is
-// also the Dutch legal line between medium and large companies -- large ones
-// must publish full annual accounts including revenue.
-const TARGET_MIN_REVENUE = 50e6;
-const TARGET_MIN_STAFF = 100;   // companies with fewer working persons are never listed
+// Sales focus: only companies with revenue above this are listed. Default EUR 10m;
+// the full, filterable list is the KPI 10 panel at the top of the KPI dashboard.
+const TARGET_MIN_REVENUE = 10e6;
+const TARGET_MIN_STAFF = 20;    // companies with fewer working persons are never listed
 
 async function renderCompanyList(kpi, branchLabel, td) {
   const box = document.createElement('div');
@@ -2171,19 +2224,26 @@ async function renderCompanyList(kpi, branchLabel, td) {
     // 2. Companies above the revenue threshold (exact revenue first, else estimate), largest first.
     const res = await runQuery(`
       MATCH (b:Branch {prefLabelNl: $branchLabel})<-[:IN_BRANCH]-(c:Company)
-      WHERE coalesce(c.staff, 0) >= $minStaff OR (c.staff IS NULL AND c.revenue >= $minRev)
-      WITH c, CASE WHEN c.revenue IS NOT NULL THEN toFloat(c.revenue)
-                   WHEN $rpw IS NOT NULL AND c.staff IS NOT NULL THEN c.staff * $rpw END AS rev
-      WITH collect({c: c, rev: rev}) AS rows
-      WITH size(rows) AS total, size([x IN rows WHERE x.rev IS NULL]) AS unsized,
-           [x IN rows WHERE x.rev >= $minRev] AS hits
+      WHERE (coalesce(c.staff, 0) >= $minStaff OR (c.staff IS NULL AND c.revenue >= $minRev)) AND c.parentOnly IS NULL
+      OPTIONAL MATCH (c)-[u:USES_ERP]->(e:ERPSystem)
+      WITH c, collect(CASE WHEN e IS NULL THEN NULL ELSE {name: e.name, confidence: u.confidence, source: u.source} END) AS erps
+      WITH c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource, .lei, .parentName,
+              .ultimateParentName, .website, .mainSbiDesc, .testData, .noMarketing,
+              erps: erps,
+              est: CASE WHEN c.revenue IS NOT NULL THEN toFloat(c.revenue)
+                        WHEN $rpw IS NOT NULL AND c.staff IS NOT NULL THEN c.staff * $rpw END} AS m
+      WITH collect(m) AS rows
+      WITH size(rows) AS total, size([x IN rows WHERE x.est IS NULL]) AS unsized,
+           [x IN rows WHERE x.est >= $minRev] AS hits
       UNWIND (CASE WHEN size(hits) = 0 THEN [null] ELSE hits END) AS h
-      WITH total, unsized, size(hits) AS nHits, h ORDER BY h.rev DESC
+      WITH total, unsized, size(hits) AS nHits, h ORDER BY h.est DESC
       WITH total, unsized, nHits, collect(h)[..25] AS top
-      RETURN total, unsized, nHits,
-             [x IN top WHERE x IS NOT NULL | x.c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource,
-               .lei, .parentName, .ultimateParentName, .website, .mainSbiDesc, .testData, .noMarketing, est: x.rev}] AS top`,
+      RETURN total, unsized, nHits, top`,
       { branchLabel, rpw, minRev: TARGET_MIN_REVENUE, minStaff: TARGET_MIN_STAFF });
+    if (!res) {
+      const st = document.getElementById('statusText');
+      throw new Error((st && st.textContent) || 'query failed (see browser console)');
+    }
     const rec = res.records[0];
     const total = rec ? Number(n(rec.get('total'))) : 0;
     const unsized = rec ? Number(n(rec.get('unsized'))) : 0;
@@ -2209,7 +2269,8 @@ async function renderCompanyList(kpi, branchLabel, td) {
       const group = c.ultimateParentName || c.parentName;
       const nmi = c.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out) -- don&#39;t approach for campaigns</div>' : '';
       return `<tr><td>${escapeHtml(c.name || '--')}<div class="kpi-label-nl">${escapeHtml(meta)}</div>${nmi}`
-        + (group ? `<div class="kpi-label-nl">part of ${escapeHtml(group)}</div>` : '') + `</td>`
+        + (group ? `<div class="kpi-label-nl">part of ${escapeHtml(group)}</div>` : '')
+        + `<div class="kpi-label-nl">ERP: ${tpErpHtml(c.erps, null)}</div></td>`
         + `<td class="kpi-drill-val">${staff != null ? Number(staff).toLocaleString() : '--'}</td>`
         + `<td class="kpi-drill-val">${exact != null
             ? escapeHtml(fmtEuro(exact)) + `<div class="kpi-label-nl">${escapeHtml([c.revenueYear, c.revenueSource].filter(Boolean).join(', '))}</div>`
@@ -2222,6 +2283,170 @@ async function renderCompanyList(kpi, branchLabel, td) {
     box.innerHTML = title + '<div class="kpi-drill-empty">Company list failed: ' + escapeHtml(e.message) + '</div>';
   }
 }
+
+// ---- KPI 10: Target accounts (industry x company x revenue x ERP) ------
+// One query pulls every loaded company with its CBS industry and its ERP
+// evidence; revenue estimates (staff x industry revenue per worker) and all
+// filters are applied here so exact and estimated revenue rank together.
+const TP = { rows: [], rpw: {}, erpPct: {} };
+const TP_RANK = { high: 3, medium: 2, low: 1 };
+
+function tpErpHtml(erps, pctUsing) {
+  const list = (erps || []).slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
+  if (!list.length) {
+    return '<span class="tp-unknown">unknown</span>' +
+      (pctUsing != null ? `<div class="tp-sub">CBS: ${escapeHtml(kpiP(pctUsing))} of 10+ staff businesses in this industry use ERP</div>` : '');
+  }
+  return list.map(e => `<span class="tp-erp" title="${escapeHtml([e.source, e.evidence].filter(Boolean).join(' -- '))}">${escapeHtml(e.name)}</span>`
+    + `<span class="tp-conf ${escapeHtml(e.confidence || 'low')}">${escapeHtml(e.confidence || 'low')}</span>`).join('<br>');
+}
+
+function tpLoadIndustryOptions() {
+  const sel = document.getElementById('tpIndustry');
+  if (sel.options.length > 1) return;
+  Object.keys(SBI_SECTION_EN).forEach(l => {
+    const o = document.createElement('option');
+    o.value = l; o.textContent = `${l} ${SBI_SECTION_EN[l]}`;
+    sel.appendChild(o);
+  });
+}
+
+async function tpRun() {
+  const status = document.getElementById('tpStatus');
+  const table = document.getElementById('tpTable');
+  const summary = document.getElementById('tpSummary');
+  status.className = '';
+  status.textContent = 'Running against your Aura instance...';
+  summary.innerHTML = ''; table.style.display = 'none';
+  document.getElementById('tpCsv').disabled = true;
+  if (!driver) { status.className = 'err'; status.textContent = 'Connect to Aura above first.'; return; }
+  try {
+    const n = v => (v && typeof v === 'object' && typeof v.low === 'number') ? v.toNumber() : v;
+    // Industry context from KPI 2's own query: % using ERP + revenue per worker (CBS 86119NED / 81156NED). Optional.
+    TP.rpw = {}; TP.erpPct = {};
+    try {
+      const k2 = KPI_DEFINITIONS.find(k => k.n === 2);
+      const ind = await runQuery(k2.cypher, {});
+      (ind ? ind.records : []).forEach(r => {
+        const l = r.get('label');
+        TP.erpPct[l] = r.has('pctUsing') && r.get('pctUsing') != null ? Number(n(r.get('pctUsing'))) : null;
+        const rev = r.has('indRevenueMln') ? n(r.get('indRevenueMln')) : null, w = r.has('indWorkersK') ? n(r.get('indWorkersK')) : null;
+        TP.rpw[l] = revenuePerWorker(rev == null ? null : Number(rev), w == null ? null : Number(w));
+      });
+    } catch (e) { console.warn('industry context skipped', e); }
+
+    const res = await runQuery(`
+      MATCH (c:Company) WHERE c.parentOnly IS NULL
+      OPTIONAL MATCH (c)-[:IN_BRANCH]->(b:Branch)
+      OPTIONAL MATCH (c)-[u:USES_ERP]->(e:ERPSystem)
+      WITH c, b, collect(CASE WHEN e IS NULL THEN NULL ELSE
+             {name: e.name, vendor: e.vendor, confidence: u.confidence, source: u.source, evidence: u.evidence, url: u.evidenceUrl} END) AS erps
+      RETURN c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource, .website, .parentName,
+                .ultimateParentName, .mainSbiDesc, .testData, .noMarketing} AS c,
+             b.prefLabelNl AS branch, erps
+      ORDER BY coalesce(c.revenue, 0) DESC, coalesce(c.staff, 0) DESC
+      LIMIT 20000`, {});
+    if (!res) throw new Error((document.getElementById('statusText') || {}).textContent || 'query failed (see console)');
+    TP.rows = res.records.map(r => {
+      const c = r.get('c'), branch = r.get('branch');
+      const staff = n(c.staff) == null ? null : Number(n(c.staff));
+      const exact = n(c.revenue) == null ? null : Number(n(c.revenue));
+      const rpw = branch ? TP.rpw[branch] : null;
+      const est = exact != null ? exact : (rpw && staff != null ? staff * rpw : null);
+      return { ...c, staff, exact, est, isEst: exact == null && est != null, branch, erps: r.get('erps') || [] };
+    });
+    if (!TP.rows.length) {
+      status.textContent = 'No company data loaded yet. Run the "CBS companies" workflow (or companies/*.py -- see companies/README.md), then try again.';
+      return;
+    }
+    // ERP vendor filter options from the data
+    const erpSel = document.getElementById('tpErp'), keep = erpSel.value;
+    const names = [...new Set(TP.rows.flatMap(r => r.erps.map(e => e.name)))].sort();
+    erpSel.innerHTML = '<option value="">Any</option><option value="__known">ERP known</option><option value="__unknown">ERP unknown</option>'
+      + names.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+    erpSel.value = [...erpSel.options].some(o => o.value === keep) ? keep : '';
+    tpRender();
+  } catch (e) {
+    status.className = 'err';
+    status.textContent = 'Query failed: ' + e.message;
+  }
+}
+
+function tpFiltered() {
+  const minRev = (Number(document.getElementById('tpMinRev').value) || 0) * 1e6;
+  const minStaff = Number(document.getElementById('tpMinStaff').value) || 0;
+  const letter = document.getElementById('tpIndustry').value;
+  const erp = document.getElementById('tpErp').value;
+  const exactOnly = document.getElementById('tpExact').checked;
+  let rows = TP.rows.filter(r => r.est != null && r.est >= minRev && (r.staff == null || r.staff >= minStaff)
+    && !(exactOnly && r.isEst)
+    && (!letter || (r.branch || '').startsWith(letter + ' '))
+    && (erp === '' || (erp === '__known' ? r.erps.length : erp === '__unknown' ? !r.erps.length : r.erps.some(e => e.name === erp))));
+  const byRev = (a, b) => b.est - a.est;
+  rows.sort(document.getElementById('tpSort').value === 'ind'
+    ? (a, b) => (a.branch || '~').localeCompare(b.branch || '~') || byRev(a, b) : byRev);
+  return rows;
+}
+
+function tpRender() {
+  const rows = tpFiltered();
+  const status = document.getElementById('tpStatus'), summary = document.getElementById('tpSummary'), table = document.getElementById('tpTable');
+  const sized = TP.rows.filter(r => r.est != null).length;
+  const totalRev = rows.reduce((s, r) => s + r.est, 0);
+  const known = rows.filter(r => r.erps.length).length;
+  const exact = rows.filter(r => !r.isEst).length;
+  const inds = new Set(rows.map(r => r.branch)).size;
+  status.className = '';
+  status.textContent = `${TP.rows.length.toLocaleString()} companies loaded, ${sized.toLocaleString()} could be sized (exact revenue, or staff x industry revenue per worker); `
+    + `${(TP.rows.length - sized).toLocaleString()} have neither and are left out.`;
+  summary.innerHTML = [
+    [rows.length.toLocaleString(), 'companies match'],
+    [inds.toLocaleString(), 'industries'],
+    [fmtEuro(totalRev) || '--', 'combined revenue'],
+    [`${known.toLocaleString()} / ${rows.length.toLocaleString()}`, 'with a known ERP'],
+    [`${exact.toLocaleString()} / ${rows.length.toLocaleString()}`, 'exact revenue'],
+  ].map(([b, l]) => `<div class="tp-stat"><b>${escapeHtml(b)}</b><span>${escapeHtml(l)}</span></div>`).join('');
+  document.getElementById('tpCsv').disabled = !rows.length;
+  if (!rows.length) { table.innerHTML = ''; table.style.display = 'none'; status.textContent += ' Nothing matches these filters.'; return; }
+  const SHOW = 500;
+  const body = rows.slice(0, SHOW).map(r => {
+    const meta = [r.city, r.kvk ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+    const group = r.ultimateParentName || r.parentName;
+    const t = translateLabel(r.branch || '');
+    const nmi = r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '';
+    return `<tr><td>${escapeHtml(r.branch ? t.en : '(no industry)')}${t.letter ? `<div class="tp-sub">${escapeHtml(r.branch)}</div>` : ''}</td>`
+      + `<td><b>${escapeHtml(r.name || '--')}</b><div class="tp-sub">${escapeHtml(meta)}</div>`
+      + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '') + nmi + `</td>`
+      + `<td class="num">${r.staff != null ? r.staff.toLocaleString() : '--'}</td>`
+      + `<td class="num">${r.isEst ? '~' : ''}${escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.isEst ? 'estimate'
+          : escapeHtml([r.revenueYear, r.revenueSource].filter(Boolean).join(', ') || 'published')}</div></td>`
+      + `<td>${tpErpHtml(r.erps, r.branch ? TP.erpPct[r.branch] : null)}</td></tr>`;
+  }).join('');
+  table.innerHTML = '<thead><tr><th>Industry</th><th>Company</th><th class="num">Staff</th><th class="num">Revenue</th><th>ERP</th></tr></thead>'
+    + `<tbody>${body}</tbody>`;
+  table.style.display = 'table';
+  if (rows.length > SHOW) status.textContent += ` Showing the first ${SHOW}; the CSV download has all ${rows.length.toLocaleString()}.`;
+}
+
+function tpCsv() {
+  const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const head = ['industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_source', 'website'];
+  const lines = tpFiltered().map(r => {
+    const top = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
+    return [r.branch, r.name, r.kvk, r.city, r.staff, Math.round(r.est), r.isEst ? 'estimate' : 'published',
+      top.map(e => e.name).join('; '), top.map(e => e.confidence).join('; '), top.map(e => e.source).join('; '), r.website].map(q).join(',');
+  });
+  const blob = new Blob(['﻿' + head.join(',') + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'target_accounts.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+document.getElementById('tpRun').onclick = tpRun;
+document.getElementById('tpCsv').onclick = tpCsv;
+['tpIndustry', 'tpMinRev', 'tpMinStaff', 'tpErp', 'tpSort', 'tpExact'].forEach(id =>
+  document.getElementById(id).addEventListener('change', () => { if (TP.rows.length) tpRender(); }));
+tpLoadIndustryOptions();
 
 async function toggleDrill(kpi, branchLabel, tr) {
   const existing = tr.nextElementSibling;
@@ -2477,7 +2702,7 @@ Nodes (every node also carries :Entity and a uri property):
 - (:DimensionValue:OtherDimension) = any extra breakdown (sex, age, type of self-employed, ...). dimensionKey = CBS column name, prefLabelNl = member. Total members start with 'Totaal'.
 - (:DimensionValue:RegioCategory), (:DimensionValue:Country), (:DimensionValue:ServiceCategory), (:DimensionValue:TradeDirection).
 - (:Dataset) label = CBS table title.
-- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP/AI use per company is NOT known -- never claim it; use the industry % from 86119NED as a likelihood. TARGET COMPANIES = 100 or more working persons (c.staff >= 100) AND revenue above 50 million euro. Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 50 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
+- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP use per company is known ONLY where (:Company)-[:USES_ERP {confidence: 'high'|'medium'|'low', source, evidence}]->(:ERPSystem {name, vendor}) exists -- never claim an ERP without that link, and say the confidence; otherwise use the industry % from 86119NED as a likelihood. AI use per company is NOT known. TARGET COMPANIES = revenue above 10 million euro (c.staff >= 20 as a sanity floor). Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 10 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
 Relationships (all start at an Observation): HAS_VARIABLE->Concept, HAS_BRANCH->Branch, ABOUT_REGION->Region, HAS_DIMENSION->OtherDimension, IN_DATASET->Dataset, HAS_REGIO_CATEGORY, HAS_COUNTRY, HAS_SERVICE_CATEGORY, HAS_TRADE_DIRECTION. Region hierarchy: (:Region)-[:PART_OF]->(:Region).
 
 TABLES LOADED (sourceTable -> content)

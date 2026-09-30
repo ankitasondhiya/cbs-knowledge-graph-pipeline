@@ -9,13 +9,13 @@ and, where available:
     lei, legal name, parent companies                   from GLEIF (joined on KVK number)
     revenue (+ year, currency), employees               from Wikidata (joined on KVK number) -> revenueSource 'wikidata'
 
-Sales focus (defaults): only companies with 100+ working persons, and --
-where revenue is published -- above EUR 50m.
+Sales focus (defaults): only companies with 20+ working persons, and --
+where revenue is published -- above EUR 10m.
 
     python build_companies.py            # real data
     python build_companies.py --test     # the KVK test-environment companies
     python build_companies.py --min-staff 0
-    python build_companies.py --min-revenue 0    # keep companies below EUR 50m revenue too
+    python build_companies.py --min-revenue 0    # keep companies below EUR 10m revenue too
     python build_companies.py --free     # no KVK needed: Wikidata companies (industry via their NACE code,
                                          # staff via Wikidata employees) + GLEIF. Larger companies only.
 """
@@ -30,11 +30,12 @@ from common import (LANDING, SBI2008_SECTION_LABEL, is_euro, read_json, read_jso
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--test", action="store_true")
-    ap.add_argument("--min-staff", type=int, default=100,
-                    help="sales focus: only companies with at least this many working persons (default 100)")
+    ap.add_argument("--min-staff", type=int, default=20,
+                    help="sales focus: only companies with at least this many working persons (default 20 -- "
+                         "below that, EUR 10m revenue is rare outside trading/holding companies)")
     ap.add_argument("--free", action="store_true", help="build from Wikidata + GLEIF only (no KVK profiles)")
-    ap.add_argument("--min-revenue", type=float, default=50e6,
-                    help="sales focus: drop companies whose PUBLISHED revenue is below this (default EUR 50m). "
+    ap.add_argument("--min-revenue", type=float, default=10e6,
+                    help="sales focus: drop companies whose PUBLISHED revenue is below this (default EUR 10m). "
                          "Companies without published revenue are kept -- the dashboard estimates theirs "
                          "(staff x industry revenue per worker) and applies the same threshold. 0 = keep all.")
     a = ap.parse_args()

@@ -1,0 +1,76 @@
+name: CBS companies (KVK/GLEIF/Wikidata -> ERP -> Neo4j)
+
+# MANUAL ONLY. Builds the company layer (named companies per CBS industry with revenue and ERP
+# evidence) and loads it into the same Neo4j Aura instance as the CBS data, so the dashboard's
+# "KPI 10 -- Target accounts" panel has something to show. Run "CBS load worker" first: companies
+# link to the CBS :Branch / :Gemeente nodes it creates.
+#
+# Secrets used (repo Settings -> Secrets and variables -> Actions): NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD.
+# Free sources only (Wikidata + GLEIF): larger companies, exact revenue where Wikidata has it.
+# For the paid KVK route (SBI + staff for many more 10m+ companies) see companies/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      min_revenue_m:
+        description: "Drop companies whose PUBLISHED revenue is below this many EUR million (0 = keep all)."
+        required: false
+        default: "10"
+      min_staff:
+        description: "Only companies with at least this many working persons (0 = no floor)."
+        required: false
+        default: "20"
+      detect_erp:
+        description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
+        required: false
+        default: true
+        type: boolean
+      dry_run:
+        description: "true = build everything and show Aura usage, but write NOTHING to Neo4j."
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  companies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      NEO4J_URI: ${{ secrets.NEO4J_URI }}
+      NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+      NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+      MIN_REV_M: ${{ github.event.inputs.min_revenue_m }}
+      MIN_STAFF: ${{ github.event.inputs.min_staff }}
+      DETECT_ERP: ${{ github.event.inputs.detect_erp }}
+      DRY_RUN: ${{ github.event.inputs.dry_run }}
+    defaults:
+      run:
+        working-directory: companies
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Wikidata (revenue, employees, industry) and GLEIF (LEI, parents)
+        run: |
+          python fetch_wikidata.py
+          python fetch_gleif.py
+          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-20}"
+          python fetch_gleif.py parents
+          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-20}"
+
+      - name: ERP evidence (your CSV, if committed, and/or website scan)
+        run: |
+          ARGS=""
+          [ -f erp_evidence.csv ] && ARGS="$ARGS --csv erp_evidence.csv"
+          [ "$DETECT_ERP" = "true" ] && ARGS="$ARGS --detect"
+          if [ -n "$ARGS" ]; then python erp_enrich.py $ARGS; else echo "No erp_evidence.csv and detection off -- ERP stays 'unknown'."; fi
+
+      - name: Load into Neo4j
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then python load_companies.py --dry-run; else python load_companies.py; fi

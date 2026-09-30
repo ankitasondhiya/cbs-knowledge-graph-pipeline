@@ -5,6 +5,8 @@ companies.json -> Neo4j (Aura), linked to the EXISTING CBS graph.
         -[:IN_BRANCH]->  (:Branch)      the CBS industry node KPI 1-5 already use (matched on its Dutch label)
         -[:LOCATED_IN]-> (:Gemeente)    the CBS municipality node (matched on city name; skipped if no match)
         -[:SUBSIDIARY_OF]-> (:Company)  direct parent from GLEIF (parent created as a light node if not loaded)
+        -[:USES_ERP {source, confidence, evidence}]-> (:ERPSystem {name, vendor})
+                                        only for companies in erp.json (see erp_enrich.py); replaced on every run
 
 Size band, SBI codes, revenue etc. are PROPERTIES, not extra nodes -- that
 keeps it at ~2-3 relationships per company, so ~72k companies (all NL
@@ -18,6 +20,7 @@ go past 90% of Aura Free's limits (200k nodes / 400k relationships) unless --for
     python load_companies.py                  # load companies.json
     python load_companies.py --test           # load the KVK TEST companies (flagged testData=true)
     python load_companies.py --remove-test    # delete those test companies again
+    python load_companies.py --erp-only       # only (re)load erp.json -> USES_ERP links, leave companies as they are
 """
 import argparse
 import os
@@ -61,6 +64,38 @@ RETURN count(*) AS n
 """
 
 
+LOAD_ERP = """
+UNWIND $rows AS row
+MATCH (c:Company {kvk: row.kvk})
+MERGE (e:Entity {uri: $base + 'erp/' + row.slug})
+ON CREATE SET e:ERPSystem, e.name = row.erp, e.vendor = row.vendor
+SET e:ERPSystem
+MERGE (c)-[r:USES_ERP]->(e)
+SET r.source = row.source, r.confidence = row.confidence, r.evidence = row.evidence,
+    r.evidenceUrl = row.evidenceUrl, r.checkedAt = row.checkedAt
+RETURN count(r) AS n
+"""
+
+
+def load_erp(session, dry_run):
+    from erp_enrich import slug
+    recs = read_json(LANDING / "erp.json", [])
+    if not recs:
+        print("No erp.json -- run erp_enrich.py to add ERP evidence (skipping ERP links).")
+        return
+    rows = [{**r, "slug": slug(r["erp"])} for r in recs if r.get("kvk") and r.get("erp")]
+    print(f"ERP: {len(rows):,} records for {len({r['kvk'] for r in rows}):,} companies, "
+          f"{len({r['slug'] for r in rows}):,} ERP systems")
+    if dry_run:
+        return
+    session.run("CREATE INDEX erp_name IF NOT EXISTS FOR (e:ERPSystem) ON (e.name)").consume()
+    session.run("MATCH ()-[r:USES_ERP]->() DELETE r").consume()   # erp.json is the source of truth
+    linked = 0
+    for i in range(0, len(rows), BATCH):
+        linked += session.run(LOAD_ERP, rows=rows[i:i + BATCH], base=BASE).single()["n"]
+    print(f"  {linked:,} USES_ERP links written (companies not in the graph are skipped).")
+
+
 def driver():
     from neo4j import GraphDatabase
     uri, user, pw = (os.environ.get(k) for k in ("NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD"))
@@ -88,12 +123,18 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="ignore the 90%% Aura Free safety margin")
     ap.add_argument("--remove-test", action="store_true")
+    ap.add_argument("--erp-only", action="store_true", help="only load erp.json (USES_ERP links)")
     a = ap.parse_args()
 
     if a.remove_test:
         with driver() as d, d.session() as s:
             n = s.run("MATCH (c:Company {testData: true}) DETACH DELETE c RETURN count(*) AS n").single()["n"]
             print(f"Removed {n} test companies.")
+        return
+
+    if a.erp_only:
+        with driver() as d, d.session() as s:
+            load_erp(s, a.dry_run)
         return
 
     companies = read_json(LANDING / ("companies.test.json" if a.test else "companies.json"), [])
@@ -125,6 +166,7 @@ def main():
             print(f"  loaded {min(i + BATCH, len(rows)):,}/{len(rows):,}", flush=True)
         linked = s.run("MATCH (c:Company)-[:IN_BRANCH]->() RETURN count(DISTINCT c) AS n").single()["n"]
         print(f"Done. {linked:,} companies linked to a CBS industry.")
+        load_erp(s, False)
 
 
 if __name__ == "__main__":
