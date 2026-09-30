@@ -5,8 +5,9 @@ companies.json -> Neo4j (Aura), linked to the EXISTING CBS graph.
         -[:IN_BRANCH]->  (:Branch)      the CBS industry node KPI 1-5 already use (matched on its Dutch label)
         -[:LOCATED_IN]-> (:Gemeente)    the CBS municipality node (matched on city name; skipped if no match)
         -[:SUBSIDIARY_OF]-> (:Company)  direct parent from GLEIF (parent created as a light node if not loaded)
-        -[:USES_ERP {source, confidence, evidence}]-> (:ERPSystem {name, vendor})
-                                        only for companies in erp.json (see erp_enrich.py); replaced on every run
+        -[:USES_ERP {source, confidence, lifecycle, evidence}]-> (:ERPSystem {name, vendor, lifecycle})
+                                        only for companies in erp.json (erp_enrich.py / signals_enrich.py); replaced on every run
+    (:Company).signals / signalCount / erpChangeSignal   job-vacancy buying signals from signals.json
 
 Size band, SBI codes, revenue etc. are PROPERTIES, not extra nodes -- that
 keeps it at ~2-3 relationships per company, so ~72k companies (all NL
@@ -43,6 +44,13 @@ UNWIND $rows AS row
 MERGE (c:Entity {uri: row.uri})
 SET c:Company, c += row.props
 WITH c, row
+// re-runs must REPLACE the industry / municipality link, not add a second one (a company had two industries)
+OPTIONAL MATCH (c)-[oldB:IN_BRANCH]->()
+DELETE oldB
+WITH DISTINCT c, row
+OPTIONAL MATCH (c)-[oldG:LOCATED_IN]->()
+DELETE oldG
+WITH DISTINCT c, row
 OPTIONAL MATCH (b:Branch {prefLabelNl: row.branchLabel})
 FOREACH (_ IN CASE WHEN b IS NULL THEN [] ELSE [1] END | MERGE (c)-[:IN_BRANCH]->(b))
 WITH c, row
@@ -69,21 +77,50 @@ UNWIND $rows AS row
 MATCH (c:Company {kvk: row.kvk})
 MERGE (e:Entity {uri: $base + 'erp/' + row.slug})
 ON CREATE SET e:ERPSystem, e.name = row.erp, e.vendor = row.vendor
-SET e:ERPSystem
+SET e:ERPSystem, e.lifecycle = row.lifecycle
 MERGE (c)-[r:USES_ERP]->(e)
 SET r.source = row.source, r.confidence = row.confidence, r.evidence = row.evidence,
-    r.evidenceUrl = row.evidenceUrl, r.checkedAt = row.checkedAt
+    r.evidenceUrl = row.evidenceUrl, r.checkedAt = row.checkedAt, r.lifecycle = row.lifecycle
 RETURN count(r) AS n
 """
 
 
+LOAD_SIGNALS = """
+UNWIND $rows AS row
+MATCH (c:Company {kvk: row.kvk})
+SET c.signals = row.signals, c.signalCount = size(row.signals), c.erpChangeSignal = row.change
+RETURN count(c) AS n
+"""
+
+
+def load_signals(session, dry_run):
+    """signals.json (job-vacancy buying signals) -> properties on :Company. Each signal is one string
+    'type|erp|title|url|date' (Neo4j properties cannot hold maps); the dashboard splits it again."""
+    sig = read_json(LANDING / "signals.json", {})
+    if not sig:
+        print("No signals.json -- run signals_enrich.py to add vacancy-based buying signals (skipping).")
+        return
+    clean = lambda x: str(x or "").replace("|", "/").replace("\n", " ")[:160]
+    rows = [{"kvk": k, "change": any(s["type"] == "erp_change" for s in v),
+             "signals": [f"{s['type']}|{clean(s.get('erp'))}|{clean(s.get('title'))}|{clean(s.get('url'))}|{clean(s.get('date'))}" for s in v]}
+            for k, v in sig.items()]
+    print(f"Signals: {len(rows):,} companies, {sum(1 for r in rows if r['change']):,} with an ERP project / migration signal")
+    if dry_run:
+        return
+    session.run("MATCH (c:Company) WHERE c.signals IS NOT NULL REMOVE c.signals, c.signalCount, c.erpChangeSignal").consume()
+    n = sum(session.run(LOAD_SIGNALS, rows=rows[i:i + BATCH]).single()["n"] for i in range(0, len(rows), BATCH))
+    print(f"  signals written on {n:,} companies.")
+
+
 def load_erp(session, dry_run):
     from erp_enrich import slug
+    load_signals(session, dry_run)
     recs = read_json(LANDING / "erp.json", [])
     if not recs:
         print("No erp.json -- run erp_enrich.py to add ERP evidence (skipping ERP links).")
         return
-    rows = [{**r, "slug": slug(r["erp"])} for r in recs if r.get("kvk") and r.get("erp")]
+    rows = [{**r, "slug": slug(r["erp"]), "lifecycle": r.get("lifecycle") or "unknown"}
+            for r in recs if r.get("kvk") and r.get("erp")]
     print(f"ERP: {len(rows):,} records for {len({r['kvk'] for r in rows}):,} companies, "
           f"{len({r['slug'] for r in rows}):,} ERP systems")
     if dry_run:

@@ -46,6 +46,9 @@ jobs:
       MIN_STAFF: ${{ github.event.inputs.min_staff }}
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
       DRY_RUN: ${{ github.event.inputs.dry_run }}
+      # optional: free key from developer.adzuna.com -> vacancy-based buying signals
+      ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+      ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
     defaults:
       run:
         working-directory: companies
@@ -64,12 +67,21 @@ jobs:
           python fetch_gleif.py parents
           python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
 
-      - name: ERP evidence (your CSV, if committed, and/or website scan)
+      - name: ERP evidence (your CSV, vendor reference pages, website scan)
         run: |
+          # each optional input is used only if you committed the file into companies/
           ARGS=""
           [ -f erp_evidence.csv ] && ARGS="$ARGS --csv erp_evidence.csv"
+          [ -f erp_reference_sources.csv ] && ARGS="$ARGS --references erp_reference_sources.csv"
           [ "$DETECT_ERP" = "true" ] && ARGS="$ARGS --detect"
-          if [ -n "$ARGS" ]; then python erp_enrich.py $ARGS; else echo "No erp_evidence.csv and detection off -- ERP stays 'unknown'."; fi
+          if [ -n "$ARGS" ]; then python erp_enrich.py $ARGS; else echo "No ERP inputs and detection off -- ERP stays 'unknown'."; fi
+
+      - name: Buying signals from job vacancies (your export and/or Adzuna)
+        run: |
+          SARGS=""
+          [ -f job_postings.csv ] && SARGS="$SARGS --jobs-csv job_postings.csv"
+          [ -n "$ADZUNA_APP_ID" ] && [ -n "$ADZUNA_APP_KEY" ] && SARGS="$SARGS --adzuna"
+          if [ -n "$SARGS" ]; then python signals_enrich.py $SARGS; else echo "No job_postings.csv and no ADZUNA_* secrets -- skipping vacancy signals."; fi
 
       - name: Load into Neo4j
         run: |
