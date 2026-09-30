@@ -235,10 +235,11 @@ POC_MEASURES = {
     # First version only matched 'WerkzamePersonen_N' and loaded revenue only (2026-09-28):
     # the people-working column is named differently in the real table. Any column
     # containing 'WerkzamePersonen' now counts, except labour volume (FTE, not people).
-    # 2026-09-30: still only revenue in Aura, so the people column is named neither way -> keep any people/jobs count
-    # (Werkzame*, *Personen*, *Banen*, *Arbeidsplaatsen*), never labour volume (FTE), pay or costs. Extra measures are cheap
-    # here (top-level industries only). The log line 'poc measure trim for 81156NED: kept [...]' shows what was kept.
-    "81156NED": re.compile(r"^(NettoOmzet\w*|(?!Arbeidsvolume|Loon|Loonsom|Kosten|Omzet)\w*(Werkzame|Personen|Banen|Arbeidsplaatsen)\w*)_\d+$", re.I),
+    # Real 81156NED columns (from CBS DataProperties, 2026-09-30): NettoOmzet_6 (x mln euro) and
+    # WerkzamePersoon_2 = jobs of people working (x 1 000, topic group "Banen"). NOTE the SINGULAR "Persoon":
+    # earlier patterns looked for "WerkzamePersonen" and never matched. WerkzamePersoon_4 is the SAME title under
+    # "Arbeidsvolume" (FTE, not people) and must NOT be kept -- the dashboard cannot tell _2 from _4 by label.
+    "81156NED": re.compile(r"^(NettoOmzet_\d+|WerkzamePersoon_2)$", re.I),
 }
 _MEASURE_KEY_RE = re.compile(r"_\d+$")
 
