@@ -18,7 +18,7 @@ on:
       min_staff:
         description: "Only companies with at least this many working persons (0 = no floor)."
         required: false
-        default: "20"
+        default: "100"
       detect_erp:
         description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
         required: false
@@ -60,9 +60,9 @@ jobs:
         run: |
           python fetch_wikidata.py
           python fetch_gleif.py
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-20}"
+          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
           python fetch_gleif.py parents
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-20}"
+          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
 
       - name: ERP evidence (your CSV, if committed, and/or website scan)
         run: |

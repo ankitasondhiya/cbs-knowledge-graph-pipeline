@@ -104,7 +104,7 @@ python load_companies.py --erp-only                # (re)writes (:Company)-[:USE
 ```
 Where nothing is known the dashboard says **unknown** and shows CBS's % of businesses in that industry using ERP -- it never guesses.
 
-**Revenue above EUR 10m.** Defaults are now EUR 10m and 20+ staff (`build_companies.py --min-revenue/--min-staff`).
+**Revenue above EUR 10m.** Defaults are now EUR 10m and 100+ staff (`build_companies.py --min-revenue/--min-staff`).
 Exact revenue exists only where Wikidata has it (large companies); KVK and GLEIF carry no revenue. For everyone else the
 dashboard estimates revenue as staff x the industry's revenue per person working (CBS 81156NED) and labels it *estimate*.
 For real revenue of EUR 10-50m companies you need annual accounts (KVK "jaarrekeningen" / a commercial source such as

@@ -170,6 +170,16 @@ def section_from_industry_names(names):
     return None
 
 
+def lenient_json(resp):
+    """resp.json(), but tolerant of raw control characters inside strings.
+    Wikidata labels occasionally contain one (e.g. a stray tab/newline), which makes the
+    strict parser fail with 'Invalid control character' and kills the whole run."""
+    try:
+        return json.loads(resp.text, strict=False)
+    except ValueError:
+        return json.loads(re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", resp.text), strict=False)
+
+
 def read_json(path, default=None):
     p = Path(path)
     if not p.exists():

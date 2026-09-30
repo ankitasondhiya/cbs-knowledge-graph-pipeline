@@ -329,7 +329,7 @@
       <div class="tp-controls">
         <label>Industry <select id="tpIndustry"><option value="">All industries</option></select></label>
         <label>Min revenue (&euro; m) <input id="tpMinRev" type="number" min="0" step="1" value="10"></label>
-        <label>Min staff <input id="tpMinStaff" type="number" min="0" step="10" value="0"></label>
+        <label>Min staff <input id="tpMinStaff" type="number" min="0" step="10" value="100"></label>
         <label>ERP <select id="tpErp"><option value="">Any</option><option value="__known">ERP known</option><option value="__unknown">ERP unknown</option></select></label>
         <label>Sort <select id="tpSort"><option value="rev">Revenue, high to low</option><option value="ind">Industry, then revenue</option></select></label>
         <label class="tp-check"><input id="tpExact" type="checkbox"> exact revenue only</label>
@@ -2192,7 +2192,7 @@ function fmtEuro(v) {
 // Sales focus: only companies with revenue above this are listed. Default EUR 10m;
 // the full, filterable list is the KPI 10 panel at the top of the KPI dashboard.
 const TARGET_MIN_REVENUE = 10e6;
-const TARGET_MIN_STAFF = 20;    // companies with fewer working persons are never listed
+const TARGET_MIN_STAFF = 100;   // companies with fewer working persons are never listed
 
 async function renderCompanyList(kpi, branchLabel, td) {
   const box = document.createElement('div');
@@ -2702,7 +2702,7 @@ Nodes (every node also carries :Entity and a uri property):
 - (:DimensionValue:OtherDimension) = any extra breakdown (sex, age, type of self-employed, ...). dimensionKey = CBS column name, prefLabelNl = member. Total members start with 'Totaal'.
 - (:DimensionValue:RegioCategory), (:DimensionValue:Country), (:DimensionValue:ServiceCategory), (:DimensionValue:TradeDirection).
 - (:Dataset) label = CBS table title.
-- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP use per company is known ONLY where (:Company)-[:USES_ERP {confidence: 'high'|'medium'|'low', source, evidence}]->(:ERPSystem {name, vendor}) exists -- never claim an ERP without that link, and say the confidence; otherwise use the industry % from 86119NED as a likelihood. AI use per company is NOT known. TARGET COMPANIES = revenue above 10 million euro (c.staff >= 20 as a sanity floor). Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 10 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
+- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP use per company is known ONLY where (:Company)-[:USES_ERP {confidence: 'high'|'medium'|'low', source, evidence}]->(:ERPSystem {name, vendor}) exists -- never claim an ERP without that link, and say the confidence; otherwise use the industry % from 86119NED as a likelihood. AI use per company is NOT known. TARGET COMPANIES = revenue above 10 million euro (c.staff >= 100 as a floor). Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 10 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
 Relationships (all start at an Observation): HAS_VARIABLE->Concept, HAS_BRANCH->Branch, ABOUT_REGION->Region, HAS_DIMENSION->OtherDimension, IN_DATASET->Dataset, HAS_REGIO_CATEGORY, HAS_COUNTRY, HAS_SERVICE_CATEGORY, HAS_TRADE_DIRECTION. Region hierarchy: (:Region)-[:PART_OF]->(:Region).
 
 TABLES LOADED (sourceTable -> content)

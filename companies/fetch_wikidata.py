@@ -13,10 +13,11 @@ Override with --kvk-property / --nace-property if Wikidata ever renames them.
 """
 import argparse
 import sys
+import time
 
 import requests
 
-from common import LANDING, norm_kvk, write_json
+from common import LANDING, lenient_json, norm_kvk, write_json
 
 UA = {"User-Agent": "cbs-knowledge-graph-pipeline/1.0 (company layer; contact via GitHub)"}
 OUT = LANDING / "wikidata_revenue.json"
@@ -58,11 +59,20 @@ def main():
     a = ap.parse_args()
     prop, nace_p = a.kvk_property, a.nace_property
     nace = f"OPTIONAL {{ ?industry wdt:{nace_p} ?nace }}" if nace_p else ""
-    r = requests.get("https://query.wikidata.org/sparql", headers={**UA, "Accept": "application/sparql-results+json"},
-                     params={"query": QUERY % {"p": prop, "nace": nace}}, timeout=300)
-    r.raise_for_status()
+    for attempt in range(3):   # the public SPARQL endpoint sometimes times out / returns 5xx
+        try:
+            r = requests.get("https://query.wikidata.org/sparql", headers={**UA, "Accept": "application/sparql-results+json"},
+                             params={"query": QUERY % {"p": prop, "nace": nace}}, timeout=300)
+            r.raise_for_status()
+            data = lenient_json(r)
+            break
+        except (requests.RequestException, ValueError) as e:
+            if attempt == 2:
+                raise
+            print(f"Wikidata attempt {attempt + 1} failed ({e}); retrying in {30 * (attempt + 1)}s", flush=True)
+            time.sleep(30 * (attempt + 1))
     best = {}
-    for b in r.json()["results"]["bindings"]:
+    for b in data["results"]["bindings"]:
         kvk = norm_kvk(b["kvk"]["value"])
         if not kvk:
             continue

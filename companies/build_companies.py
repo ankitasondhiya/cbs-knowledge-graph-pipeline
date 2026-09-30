@@ -9,7 +9,7 @@ and, where available:
     lei, legal name, parent companies                   from GLEIF (joined on KVK number)
     revenue (+ year, currency), employees               from Wikidata (joined on KVK number) -> revenueSource 'wikidata'
 
-Sales focus (defaults): only companies with 20+ working persons, and --
+Sales focus (defaults): only companies with 100+ working persons, and --
 where revenue is published -- above EUR 10m.
 
     python build_companies.py            # real data
@@ -30,9 +30,9 @@ from common import (LANDING, SBI2008_SECTION_LABEL, is_euro, read_json, read_jso
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--test", action="store_true")
-    ap.add_argument("--min-staff", type=int, default=20,
-                    help="sales focus: only companies with at least this many working persons (default 20 -- "
-                         "below that, EUR 10m revenue is rare outside trading/holding companies)")
+    ap.add_argument("--min-staff", type=int, default=100,
+                    help="sales focus: only companies with at least this many working persons (default 100 -- "
+                         "lowers it for smaller firms)")
     ap.add_argument("--free", action="store_true", help="build from Wikidata + GLEIF only (no KVK profiles)")
     ap.add_argument("--min-revenue", type=float, default=10e6,
                     help="sales focus: drop companies whose PUBLISHED revenue is below this (default EUR 10m). "
