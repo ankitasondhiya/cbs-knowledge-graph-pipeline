@@ -2394,12 +2394,16 @@ function tpScore(r) {
   const g = gap == null ? 5 : Math.round(15 * Math.min(gap, 50) / 50);
   score += g; why.push(gap == null ? 'industry ERP gap unknown: +5' : `${Math.round(gap)}% of industry has no ERP: +${g}`);
   const erps = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
-  const legacy = erps.find(e => e.lifecycle === 'legacy');
+  // a legacy flag only counts as a migration lead with at least MEDIUM evidence; a weak (low) one is a "verify" hint
+  const legacy = erps.find(e => e.lifecycle === 'legacy' && (TP_RANK[e.confidence] || 0) >= 2);
+  const weakLegacy = !legacy && erps.find(e => e.lifecycle === 'legacy');
   let status, next;
   if (legacy) {
-    const pts = (TP_RANK[legacy.confidence] || 0) >= 2 ? 30 : 20;
-    score += pts; why.push(`runs legacy ${legacy.name} (${legacy.confidence} evidence): +${pts}`); status = 'legacy';
+    score += 30; why.push(`runs legacy ${legacy.name} (${legacy.confidence} evidence): +30`); status = 'legacy';
     next = `Legacy ERP (${legacy.name}): open a modernisation / migration conversation.`;
+  } else if (weakLegacy) {
+    score += 8; why.push(`weak signal of legacy ${weakLegacy.name} (low evidence -- verify): +8`); status = 'unknown';
+    next = `Possibly on ${weakLegacy.name} (weak evidence): verify before treating as a migration lead.`;
   } else if (!erps.length) {
     score += 12; why.push('ERP unknown: +12'); status = 'unknown';
     next = 'ERP unknown: qualify first -- ask what runs finance and operations today.';

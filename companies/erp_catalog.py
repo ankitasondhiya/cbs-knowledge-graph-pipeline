@@ -31,7 +31,8 @@ CATALOG = {
     "Microsoft Dynamics 365": dict(vendor="Microsoft", lifecycle="current",
                                    aliases=["dynamics 365", "d365", "business central", "microsoft dynamics 365"],
                                    strong=["businesscentral.dynamics.com", "operations.dynamics.com"],
-                                   weak=[r"dynamics 365", r"business central", r"\bd365\b"], note="Current Dynamics generation"),
+                                   weak=[r"dynamics 365 (?:finance|business central|supply chain|operations|f ?& ?o|commerce)", r"business central",
+                                         r"\bd365 (?:f ?& ?o|fo|bc|finance)"], note="Current Dynamics generation"),
     "Microsoft Dynamics NAV / AX": dict(vendor="Microsoft", lifecycle="legacy",
                                         aliases=["navision", "dynamics nav", "dynamics ax", "axapta", "microsoft dynamics nav"],
                                         strong=[], weak=[r"dynamics (?:nav|ax)\b", r"navision", r"axapta"],
@@ -60,7 +61,7 @@ CATALOG = {
                   strong=["unit4.com"], weak=[r"unit4", r"agresso"], note="Services / public sector ERP"),
     "Infor": dict(vendor="Infor", lifecycle="current", aliases=["infor", "infor ln", "infor m3", "infor cloudsuite"],
                   strong=["infor.com"], weak=[r"infor (?:ln|m3|cloudsuite|syteline|visual)"], note="Manufacturing / distribution ERP"),
-    "Baan": dict(vendor="Infor", lifecycle="legacy", aliases=["baan"], strong=[], weak=[r"\bbaan\b"],
+    "Baan": dict(vendor="Infor", lifecycle="legacy", aliases=["baan"], strong=[], weak=[r"infor baan", r"\bbaan ?(?:erp|iv|v|4|5|software|systeem)\b"],   # NOT bare "baan": Dutch for "job"
                  note="Very old ERP generation (Infor LN's ancestor) -- almost certainly a replacement candidate"),
     "IFS": dict(vendor="IFS", lifecycle="current", aliases=["ifs", "ifs cloud", "ifs applications"],
                 strong=["ifs.com"], weak=[r"ifs (?:cloud|applications|erp)"], note="Asset-intensive / project industries"),
