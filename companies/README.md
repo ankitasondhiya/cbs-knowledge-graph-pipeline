@@ -112,3 +112,34 @@ Company.info or Graydon) -- add them as `revenue`/`revenueYear` in `companies.js
 
 **Run from GitHub instead of your PC:** Actions -> *CBS companies* -> Run workflow (uses your `NEO4J_*` secrets; start with `dry_run=true`).
 Then open the dashboard -> KPI dashboard -> **KPI 10 -- Target accounts** -> Run.
+
+## Sales playbook: which companies need help, and why now (KPI 10)
+KPI 10 ranks the named companies by an **opportunity score (0-100)** built from four things a seller actually asks:
+
+| Question | Points | Where it comes from |
+|---|---|---|
+| Is it worth the effort? (size) | up to 25 | revenue: exact where published, else estimate |
+| Is this an under-served market? | up to 15 | CBS: share of the industry's businesses without ERP (KPI 2) |
+| What do they run today? | up to 30 | ERP evidence: **legacy** 30 · unknown 12 · current 5 (see below) |
+| Why now? | up to 30 | job vacancies: **ERP project / migration being staffed** 30 · ERP-related role 10 |
+
+The score is a transparent heuristic, not a prediction -- every point is listed in the "Why now" column together with a suggested next step
+(e.g. *ERP project under way: get in front of the selection team*, *Legacy ERP: open a migration conversation*, *ERP unknown: qualify first*).
+Use the **Focus** filter for "ERP project / migration under way", "Legacy ERP" or "ERP unknown", and download the list as CSV for the CRM.
+
+### Gathering the ERP evidence (all optional, all merged into one `erp.json`, strongest evidence wins)
+| Step | Command | Confidence |
+|---|---|---|
+| Your own facts (CRM, partners, bought data) | `python erp_enrich.py --csv erp_evidence.csv` | high |
+| **Vendor customer-reference pages** -- list AFAS / Exact / SAP-partner / Unit4 case-study pages in `erp_reference_sources.csv` (template provided); we find *your* companies by name on them | `python erp_enrich.py --references erp_reference_sources.csv` | high (named in the headline/URL) / medium |
+| Company websites | `python erp_enrich.py --detect` | medium / low |
+| **Job vacancies** -- export or Adzuna API (`ADZUNA_APP_ID`/`ADZUNA_APP_KEY` secrets); agencies are ignored; LinkedIn/Indeed are not scraped | `python signals_enrich.py --jobs-csv job_postings.csv` or `--adzuna` | medium / low + the buying signal |
+| Then load | `python load_companies.py --erp-only` | |
+
+Commit any of `erp_evidence.csv`, `erp_reference_sources.csv`, `job_postings.csv` into `companies/` and the **CBS companies** workflow picks them up automatically.
+
+*Lifecycle:* each ERP product is tagged `current`, `legacy` (older / on-premise generation: SAP ECC, Dynamics NAV/AX, Exact Globe/Synergy, Baan) or `unknown`
+(text says "SAP" without the generation). "Legacy" is a sales hint -- check the vendor's current maintenance dates before quoting a deadline.
+A vacancy for an "SAP ECC -> S/4HANA migration" records ECC as what they run today and S/4HANA only as the (low-confidence) target.
+
+*Paid coverage:* for broad ERP coverage buy a technographics sample (HG Insights, 6sense, BuiltWith ...) for your target companies and import it via `--csv`.
