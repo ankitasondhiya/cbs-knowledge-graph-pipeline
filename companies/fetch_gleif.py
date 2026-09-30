@@ -30,6 +30,7 @@ API = "https://api.gleif.org/api/v1"
 OUT = LANDING / "gleif_nl.jsonl"
 PARENTS = LANDING / "gleif_parents.json"
 PAGE_SIZE = 200
+BATCH = 25                   # KVK numbers per batched lookup call
 MIN_INTERVAL = 1.05          # seconds between calls -> stays under 60/min
 HEADERS = {"Accept": "application/vnd.api+json", "User-Agent": "cbs-knowledge-graph-pipeline (company layer)"}
 
@@ -116,19 +117,88 @@ def fetch_lookup(kvk_file=None):
     todo = [k for k in wanted if k not in have and k not in misses]
     print(f"GLEIF lookup: {len(wanted):,} KVK numbers, {len(wanted) - len(todo):,} already known, "
           f"{len(todo):,} to look up (~{len(todo) * MIN_INTERVAL / 60:.0f} min)")
-    found = 0
-    for i, kvk in enumerate(todo, 1):
-        data = get(f"{API}/lei-records", params={"filter[entity.registeredAs]": kvk,
-                                                  "filter[entity.legalAddress.country]": "NL", "page[size]": 10})
-        hits = [slim(r) for r in (data or {}).get("data", [])]
-        hits = [h for h in hits if h.get("kvk") == kvk and h["lei"] not in leis]
+    found = failed = consecutive = 0
+    hit_kvks = []          # KVK numbers GLEIF has answered for individually -> used to probe batch mode
+    batch_ok = None        # None = not tested yet, True/False after the probe
+    failures = set()
+
+    def query(kvks):
+        """One GLEIF call for one or more KVK numbers -> {kvk: [records]} (raises RuntimeError if GLEIF keeps failing)."""
+        data = get(f"{API}/lei-records", params={"filter[entity.registeredAs]": ",".join(kvks),
+                                                  "filter[entity.legalAddress.country]": "NL",
+                                                  "page[size]": PAGE_SIZE if len(kvks) > 1 else 10})
+        out = {k: [] for k in kvks}
+        for r in (data or {}).get("data", []):
+            h = slim(r)
+            if h.get("kvk") in out:
+                out[h["kvk"]].append(h)
+        return out
+
+    def record(kvk, hits):
+        nonlocal found
+        hits = [h for h in hits if h["lei"] not in leis]
         for h in hits:
             append_jsonl(OUT, h); leis.add(h["lei"]); found += 1
-        if not hits:
-            misses.add(kvk)
-        if i % 25 == 0 or i == len(todo):
+        if hits:
+            hit_kvks.append(kvk)
+
+    i = 0
+    while i < len(todo):
+        # batch mode: ~25 KVK numbers per call instead of 1 (GLEIF accepts comma-separated filter values)
+        use_batch = batch_ok is True
+        chunk = todo[i:i + (BATCH if use_batch else 1)]
+        try:
+            res = query(chunk)
+            consecutive = 0
+        except (RuntimeError, requests.RequestException) as e:
+            if len(chunk) > 1:      # a failed batch: retry its members one by one so only the bad one is skipped
+                print(f"  ! batch of {len(chunk)} failed ({e}); retrying one at a time", flush=True)
+                res, bad_ones = {}, []
+                for k in chunk:
+                    try:
+                        res.update(query([k]))
+                    except (RuntimeError, requests.RequestException):
+                        bad_ones.append(k)
+                if len(bad_ones) < len(chunk):
+                    failed += len(bad_ones); failures.update(bad_ones); consecutive = 0
+                    for kvk in chunk:
+                        if kvk in bad_ones:
+                            continue
+                        hits = res.get(kvk, [])
+                        record(kvk, hits)
+                        if not hits:
+                            misses.add(kvk)
+                    i += len(chunk)
+                    continue
+            failed += len(chunk); consecutive += 1
+            failures.update(chunk)
+            print(f"  ! GLEIF failed for {len(chunk)} KVK number(s), skipping ({e})", flush=True)
+            i += len(chunk)
+            if consecutive >= 15:
+                write_json(misses_path, sorted(misses))
+                print("  GLEIF has failed 15 calls in a row -- stopping the lookup here and keeping what was found. "
+                      "Re-run later to continue.", flush=True)
+                break
+            continue
+        for kvk in chunk:
+            hits = res.get(kvk, [])
+            record(kvk, hits)
+            if not hits:
+                misses.add(kvk)
+        i += len(chunk)
+        # probe: once 2 single lookups have hit, check that a batched call returns both before trusting batch mode
+        if batch_ok is None and len(hit_kvks) >= 2:
+            try:
+                probe = query(hit_kvks[:2])
+                batch_ok = all(probe.get(k) for k in hit_kvks[:2])
+            except (RuntimeError, requests.RequestException):
+                batch_ok = False
+            print(f"  batch lookup {'ENABLED' if batch_ok else 'not available -- continuing one at a time'}", flush=True)
+        if i % 25 < len(chunk) or i >= len(todo):
             write_json(misses_path, sorted(misses))
-            print(f"  {i:,}/{len(todo):,}  ({found:,} LEIs found)", flush=True)
+            print(f"  {min(i, len(todo)):,}/{len(todo):,}  ({found:,} LEIs found)", flush=True)
+    if failed:
+        print(f"  {failed:,} lookups failed and were skipped (they are retried on the next run).")
     write_json(misses_path, sorted(misses))
     print(f"Done: {found:,} new LEI records -> {OUT}  (companies without an LEI are normal: most SMEs have none)")
 
@@ -213,7 +283,11 @@ def fetch_bulk(url=GOLDEN_COPY):
 
 
 def _parent(lei, kind):
-    d = get(f"{API}/lei-records/{lei}/{kind}")
+    try:
+        d = get(f"{API}/lei-records/{lei}/{kind}")
+    except (RuntimeError, requests.RequestException) as e:
+        print(f"  ! parent lookup skipped for {lei} ({e})", flush=True)
+        return None
     if not d or not d.get("data"):
         return None
     s = slim(d["data"])
@@ -251,4 +325,4 @@ if __name__ == "__main__":
         else:
             fetch_lookup(a.kvk_file)
     except requests.RequestException as e:
-        sys.exit(f"GLEIF request failed: {e}")
+        print(f"GLEIF request failed: {e} -- continuing with what was fetched (LEI/parents are optional enrichment).")
