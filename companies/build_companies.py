@@ -59,7 +59,7 @@ def main():
                 "industryByName": bool(by_name),
                 "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or None,
                 "sbi": [{"code": c} for c in w.get("naceCodes", [])],
-                "staff": w.get("employees"), "address": {"city": w.get("city")}, "websites": [],
+                "staff": w.get("employees"), "address": {"city": w.get("city")}, "websites": [w["website"]] if w.get("website") else [],
                 "freeSource": True,
             })
     else:

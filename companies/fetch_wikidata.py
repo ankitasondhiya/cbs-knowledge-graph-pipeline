@@ -41,10 +41,11 @@ def find_property(search, must_contain, what, required=True):
 
 
 QUERY = """
-SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLabel ?nace ?cityLabel WHERE {
+SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLabel ?nace ?cityLabel ?website WHERE {
   ?item wdt:%(p)s ?kvk .
   OPTIONAL { ?item wdt:P452 ?industry . %(nace)s }
   OPTIONAL { ?item wdt:P159 ?city }
+  OPTIONAL { ?item wdt:P856 ?website }   # official website -> used by erp_enrich.py --detect
   OPTIONAL { ?item p:P2139 ?rs . ?rs psv:P2139 ?rv . ?rv wikibase:quantityAmount ?revenue ; wikibase:quantityUnit ?unit .
              OPTIONAL { ?rs pq:P585 ?revDate } }
   OPTIONAL { ?item wdt:P1128 ?employees }
@@ -79,13 +80,15 @@ def main():
         rec = best.setdefault(kvk, {"kvk": kvk, "wikidata": b["item"]["value"].rsplit("/", 1)[-1],
                                     "name": b.get("itemLabel", {}).get("value"),
                                     "revenue": None, "revenueCurrency": None, "revenueYear": None, "employees": None,
-                                    "industries": [], "naceCodes": [], "city": None})
+                                    "industries": [], "naceCodes": [], "city": None, "website": None})
         ind = b.get("industryLabel", {}).get("value")
         if ind and ind not in rec["industries"]:
             rec["industries"].append(ind)
         nc = b.get("nace", {}).get("value")
         if nc and nc not in rec["naceCodes"]:
             rec["naceCodes"].append(nc)
+        if not rec["website"] and b.get("website"):
+            rec["website"] = b["website"]["value"]
         if not rec["city"] and b.get("cityLabel"):
             rec["city"] = b["cityLabel"]["value"]
         if "employees" in b:
