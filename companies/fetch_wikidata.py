@@ -12,6 +12,7 @@ Override with --kvk-property / --nace-property if Wikidata ever renames them.
     python fetch_wikidata.py
 """
 import argparse
+import re
 import sys
 import time
 
@@ -53,6 +54,32 @@ SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLa
 }"""
 
 
+def run_sparql(query, retries=3):
+    """Public Wikidata endpoint: sometimes times out / 5xx, and labels can contain raw control characters."""
+    for attempt in range(retries):
+        try:
+            r = requests.get("https://query.wikidata.org/sparql", headers={**UA, "Accept": "application/sparql-results+json"},
+                             params={"query": query}, timeout=300)
+            r.raise_for_status()
+            return lenient_json(r)
+        except (requests.RequestException, ValueError) as e:
+            if attempt == retries - 1:
+                raise
+            print(f"Wikidata attempt {attempt + 1} failed ({e}); retrying in {30 * (attempt + 1)}s", flush=True)
+            time.sleep(30 * (attempt + 1))
+
+
+# Second, lighter query: what KIND of thing each item is ("airline", "supermarket chain") and its one-line
+# description. Used only to work out the CBS industry for companies with no NACE code / industry on Wikidata.
+QUERY_TYPES = """
+SELECT ?item ?typeLabel ?desc WHERE {
+  ?item wdt:%(p)s ?kvk .
+  OPTIONAL { ?item wdt:P31 ?type }
+  OPTIONAL { ?item schema:description ?desc . FILTER(LANG(?desc) IN ("en", "nl")) }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
+}"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--kvk-property", default="P3220", help='Wikidata "KvK company ID"')
@@ -60,18 +87,7 @@ def main():
     a = ap.parse_args()
     prop, nace_p = a.kvk_property, a.nace_property
     nace = f"OPTIONAL {{ ?industry wdt:{nace_p} ?nace }}" if nace_p else ""
-    for attempt in range(3):   # the public SPARQL endpoint sometimes times out / returns 5xx
-        try:
-            r = requests.get("https://query.wikidata.org/sparql", headers={**UA, "Accept": "application/sparql-results+json"},
-                             params={"query": QUERY % {"p": prop, "nace": nace}}, timeout=300)
-            r.raise_for_status()
-            data = lenient_json(r)
-            break
-        except (requests.RequestException, ValueError) as e:
-            if attempt == 2:
-                raise
-            print(f"Wikidata attempt {attempt + 1} failed ({e}); retrying in {30 * (attempt + 1)}s", flush=True)
-            time.sleep(30 * (attempt + 1))
+    data = run_sparql(QUERY % {"p": prop, "nace": nace})
     best = {}
     for b in data["results"]["bindings"]:
         kvk = norm_kvk(b["kvk"]["value"])
@@ -80,7 +96,8 @@ def main():
         rec = best.setdefault(kvk, {"kvk": kvk, "wikidata": b["item"]["value"].rsplit("/", 1)[-1],
                                     "name": b.get("itemLabel", {}).get("value"),
                                     "revenue": None, "revenueCurrency": None, "revenueYear": None, "employees": None,
-                                    "industries": [], "naceCodes": [], "city": None, "website": None})
+                                    "industries": [], "naceCodes": [], "city": None, "website": None,
+                                    "types": [], "descriptions": []})
         ind = b.get("industryLabel", {}).get("value")
         if ind and ind not in rec["industries"]:
             rec["industries"].append(ind)
@@ -101,8 +118,22 @@ def main():
             if rec["revenueYear"] is None or (year and year > rec["revenueYear"]):
                 rec.update(revenue=float(b["revenue"]["value"]), revenueYear=year,
                            revenueCurrency=b.get("unitLabel", {}).get("value"))
+    try:
+        by_qid = {r["wikidata"]: r for r in best.values()}
+        for b in run_sparql(QUERY_TYPES % {"p": prop})["results"]["bindings"]:
+            rec = by_qid.get(b["item"]["value"].rsplit("/", 1)[-1])
+            if rec is None:
+                continue
+            t = b.get("typeLabel", {}).get("value")
+            if t and not re.fullmatch(r"Q\d+", t) and t not in rec["types"]:
+                rec["types"].append(t)
+            d = b.get("desc", {}).get("value")
+            if d and d not in rec["descriptions"]:
+                rec["descriptions"].append(d)
+    except Exception as e:   # optional enrichment
+        print(f"(kind/description lookup skipped: {e})")
     for rec in best.values():   # SPARQL row order varies between runs -> sort, so the industry picked is stable
-        rec["naceCodes"].sort(); rec["industries"].sort()
+        rec["naceCodes"].sort(); rec["industries"].sort(); rec["types"].sort(); rec["descriptions"].sort()
     rows = list(best.values())
     write_json(OUT, rows)
     print(f"Wikidata: {len(rows):,} companies with a KVK number, "

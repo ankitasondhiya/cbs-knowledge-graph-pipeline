@@ -53,11 +53,19 @@ def main():
         for w in wiki.values():
             code = next((c for c in w.get("naceCodes", []) if sbi_section(c)), None)
             letter_only = next((c for c in w.get("naceCodes", []) if re.fullmatch(r"[A-U]", c.strip())), None)
-            by_name = None if (code or letter_only) else section_from_industry_names(w.get("industries"))
+            by_name = via = None
+            if not (code or letter_only):
+                for via_, names, extra in (("wikidata industry name", w.get("industries"), False),
+                                           ("wikidata kind (instance of)", w.get("types"), True),
+                                           ("wikidata description", w.get("descriptions"), True)):
+                    by_name = section_from_industry_names(names, extra_keywords=extra)
+                    if by_name:
+                        via = via_
+                        break
             profiles.append({
                 "kvk": w["kvk"], "name": w.get("name"), "tradeNames": [],
-                "industryByName": bool(by_name),
-                "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or None,
+                "industryByName": bool(by_name), "industryVia": via,
+                "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or (w.get("descriptions") or [None])[0],
                 "sbi": [{"code": c} for c in w.get("naceCodes", [])],
                 "staff": w.get("employees"), "address": {"city": w.get("city")}, "websites": [w["website"]] if w.get("website") else [],
                 "freeSource": True,
@@ -126,7 +134,7 @@ def main():
             "wikidata": w.get("wikidata"),
             "noMarketing": p.get("noMarketing"),
             "sources": [s for s, ok in (("kvk", not p.get("freeSource")), ("gleif", bool(g)), ("wikidata", bool(w))) if ok],
-            "industrySource": (("wikidata industry name" if p.get("industryByName") else "wikidata NACE")
+            "industrySource": ((p.get("industryVia") or "wikidata industry name" if p.get("industryByName") else "wikidata NACE")
                                if p.get("freeSource") else "kvk SBI") if section else None,
         })
 
@@ -134,14 +142,15 @@ def main():
         unmapped = Counter()
         for c in out:
             if not c["branchLabel"]:
-                for n in (wiki.get(c["kvk"], {}).get("industries") or ["(no industry on Wikidata)"])[:3]:
+                w_ = wiki.get(c["kvk"], {})
+                for n in ((w_.get("industries") or [])[:2] + (w_.get("types") or [])[:2] + (w_.get("descriptions") or [])[:1]) or ["(nothing on Wikidata)"]:
                     unmapped[n] += 1
         if unmapped:
-            print("  industry names on Wikidata that could NOT be mapped to a CBS industry (add keywords to INDUSTRY_KEYWORDS in common.py):")
+            print("  industry names / kinds / descriptions on Wikidata that could NOT be mapped to a CBS industry (add keywords to INDUSTRY_KEYWORDS in common.py):")
             for n, k in unmapped.most_common(40):
                 print(f"    {k:4}  {n}")
         no_ind = sum(1 for c in out if not c["branchLabel"])
-        by_name = sum(1 for c in out if c.get("industrySource") == "wikidata industry name")
+        by_name = sum(1 for c in out if c.get("industrySource") and c["industrySource"].startswith("wikidata") and c["industrySource"] != "wikidata NACE")
         print(f"  free mode: industry from NACE code: {sum(1 for c in out if c.get('industrySource') == 'wikidata NACE'):,}, "
               f"from industry name: {by_name:,}, none: {no_ind:,} (of {len(out):,})")
     write_json(LANDING / ("companies.test.json" if a.test else "companies.json"), out)

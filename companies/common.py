@@ -161,11 +161,54 @@ INDUSTRY_KEYWORDS = [
 ]
 
 
-def section_from_industry_names(names):
-    """['brouwerijsector', 'bouw'] -> 'C' (first name that maps), or None."""
-    low = [(n or "").lower() for n in names or []]
-    for kw, letter in INDUSTRY_KEYWORDS:          # most specific keyword wins, whichever name it's in
-        if any(kw in n for n in low):
+# Extra keywords for Wikidata 'instance of' labels and one-line descriptions ("airline", "supermarket chain",
+# "bank holding company" ...). Consulted AFTER the industry keywords above, in this order.
+TYPE_KEYWORDS = [
+    ("nature conservation", "S"), ("natuurbehoud", "S"), ("natuurbescherming", "S"), ("non-profit", "S"), ("nonprofit", "S"),
+    ("charity", "S"), ("foundation", "S"), ("stichting", "S"), ("cooperative of", "G"), ("coöperatie", "G"), ("cooperative", "G"),
+    ("flower auction", "G"), ("supermarket", "G"), ("retailer", "G"), ("department store", "G"), ("wholesaler", "G"),
+    ("hypermarket", "G"), ("webshop", "G"), ("online shop", "G"), ("distributor", "G"), ("car dealer", "G"),
+    ("airline", "H"), ("airport", "H"), ("railway", "H"), ("shipping company", "H"), ("port operator", "H"), ("courier", "H"),
+    ("postal", "H"), ("freight", "H"), ("bus company", "H"), ("ferry", "H"),
+    ("bank", "K"), ("insurer", "K"), ("insurance", "K"), ("asset manag", "K"), ("pension", "K"), ("stock exchange", "K"),
+    ("payment", "K"), ("credit", "K"), ("mortgage", "K"), ("private equity", "K"), ("holding company", "K"),
+    ("utility", "D"), ("power company", "D"), ("energy company", "D"), ("electricity", "D"), ("gas company", "D"),
+    ("water company", "E"), ("water supply", "E"), ("waste management", "E"),
+    ("telecommunication", "J"), ("telecom", "J"), ("broadcaster", "J"), ("publisher", "J"), ("newspaper", "J"),
+    ("record label", "J"), ("software", "J"), ("internet", "J"), ("game developer", "J"), ("it service", "J"),
+    ("brewery", "C"), ("dairy", "C"), ("manufacturer", "C"), ("producer of", "C"), ("pharmaceutical", "C"), ("biotech", "C"),
+    ("chemical", "C"), ("shipyard", "C"), ("semiconductor", "C"), ("automobile", "C"), ("car manufacturer", "C"),
+    ("aircraft", "C"), ("food company", "C"), ("packaging", "C"), ("paper", "C"), ("steel", "C"),
+    ("construction company", "F"), ("dredging", "F"), ("contractor", "F"), ("real estate", "L"), ("property", "L"),
+    ("staffing", "N"), ("recruitment", "N"), ("employment agency", "N"), ("travel agency", "N"), ("rental", "N"),
+    ("consultancy", "M"), ("consulting", "M"), ("law firm", "M"), ("advertising", "M"), ("engineering company", "M"),
+    ("architecture", "M"), ("research institute", "M"),
+    ("hospital", "Q"), ("healthcare", "Q"), ("nursing", "Q"), ("care provider", "Q"), ("university", "P"), ("school", "P"),
+    ("lottery", "R"), ("casino", "R"), ("football club", "R"), ("sports club", "R"), ("museum", "R"), ("gambling", "R"),
+    ("hotel", "I"), ("restaurant", "I"), ("catering", "I"), ("fast food", "I"), ("holiday park", "I"),
+    ("farm", "A"), ("horticultur", "A"), ("agricultur", "A"), ("mining", "B"),
+    ("government agency", "O"), ("public body", "O"),
+]
+
+
+_FALSE_FRIENDS = re.compile(r"zorgvuldig\w*|bankrupt\w*|bankroet\w*|handeling\w*|handelsmerk\w*|trademark\w*|filmpje\w*")
+
+
+def _kw_hit(kw, text):
+    """Short keywords must start a word ('bank' must not hit 'bankruptcy'-style noise, 'data' not 'metadata',
+    'zorg' not 'verzorging'); long ones may sit inside Dutch compounds ('goederenvervoer' contains 'vervoer')."""
+    text = _FALSE_FRIENDS.sub(" ", text)
+    if len(kw) <= 5:
+        return re.search(r"(?<![a-z0-9])" + re.escape(kw), text) is not None
+    return kw in text
+
+
+def section_from_industry_names(names, extra_keywords=False):
+    """['brouwerijsector', 'bouw'] -> 'C' (first keyword that maps), or None.
+    extra_keywords=True also tries TYPE_KEYWORDS (for Wikidata 'instance of' labels / descriptions)."""
+    low = [(n or "").lower() for n in names or [] if n]
+    for kw, letter in INDUSTRY_KEYWORDS + (TYPE_KEYWORDS if extra_keywords else []):
+        if any(_kw_hit(kw, n) for n in low):
             return letter
     return None
 
