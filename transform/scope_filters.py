@@ -235,7 +235,10 @@ POC_MEASURES = {
     # First version only matched 'WerkzamePersonen_N' and loaded revenue only (2026-09-28):
     # the people-working column is named differently in the real table. Any column
     # containing 'WerkzamePersonen' now counts, except labour volume (FTE, not people).
-    "81156NED": re.compile(r"^(NettoOmzet\w*|(?!Arbeidsvolume)\w*WerkzamePersonen\w*)_\d+$", re.I),
+    # 2026-09-30: still only revenue in Aura, so the people column is named neither way -> keep any people/jobs count
+    # (Werkzame*, *Personen*, *Banen*, *Arbeidsplaatsen*), never labour volume (FTE), pay or costs. Extra measures are cheap
+    # here (top-level industries only). The log line 'poc measure trim for 81156NED: kept [...]' shows what was kept.
+    "81156NED": re.compile(r"^(NettoOmzet\w*|(?!Arbeidsvolume|Loon|Loonsom|Kosten|Omzet)\w*(Werkzame|Personen|Banen|Arbeidsplaatsen)\w*)_\d+$", re.I),
 }
 _MEASURE_KEY_RE = re.compile(r"_\d+$")
 
@@ -259,6 +262,8 @@ def _trim_measures(rows: list, table_id: str) -> list:
               f"(pattern {pat.pattern!r}); keeping all {len(measure_keys)} measures.")
         return rows
     drop = measure_keys - keep
+    if table_id == "81156NED":   # the real column names, so a wrong guess is visible in the log
+        print(f"  81156NED measure columns available: {sorted(measure_keys)}")
     # Latest period in which each kept measure actually has a value.
     latest = {}
     for r in rows:

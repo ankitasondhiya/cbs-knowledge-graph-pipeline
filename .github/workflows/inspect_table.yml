@@ -1,0 +1,28 @@
+name: Inspect CBS table columns
+
+# Manual helper: prints the real column names / titles / units of one CBS table, straight from CBS.
+# Use it when a KPI is missing a measure (e.g. the people-working column of 81156NED) -- paste the log to Claude.
+on:
+  workflow_dispatch:
+    inputs:
+      table:
+        description: "CBS table id, e.g. 81156NED"
+        required: true
+        default: "81156NED"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install cbsodata
+      - name: Print columns
+        env:
+          TABLE: ${{ github.event.inputs.table }}
+        run: python transform/inspect_table.py "$TABLE"
