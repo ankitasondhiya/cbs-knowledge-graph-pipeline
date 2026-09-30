@@ -21,9 +21,10 @@ where revenue is published -- above EUR 10m.
 """
 import argparse
 import re
+from pathlib import Path
 from collections import Counter
 
-from common import (LANDING, SBI2008_SECTION_LABEL, is_euro, read_json, read_jsonl, sbi_section,
+from common import (LANDING, norm_kvk, SBI2008_SECTION_LABEL, is_euro, read_json, read_jsonl, sbi_section,
                     section_from_industry_names, size_bands, write_json)
 
 
@@ -44,6 +45,21 @@ def main():
     parents = read_json(LANDING / "gleif_parents.json", {})
     wiki = {r["kvk"]: r for r in read_json(LANDING / "wikidata_revenue.json", [])}
 
+    # Manual industry overrides (companies/industry_overrides.csv: wikidata | kvk | name | section A-U | note).
+    # They win over every automatic guess -- add a row whenever a company lands in "(no industry)" or the wrong one.
+    overrides = {}
+    ov_path = Path(__file__).resolve().parent / "industry_overrides.csv"
+    if ov_path.exists():
+        import csv
+        with open(ov_path, newline="", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                sec = (r.get("section") or "").strip().upper()
+                if re.fullmatch(r"[A-U]", sec):
+                    for key in ((r.get("wikidata") or "").strip(), norm_kvk(r.get("kvk")) if r.get("kvk") else ""):
+                        if key:
+                            overrides[key] = sec
+        print(f"industry overrides: {len(overrides):,} keys from {ov_path.name}")
+
     if a.free:
         # Stand-in 'profiles' from Wikidata: NACE code -> SBI division (SBI is the Dutch
         # version of NACE, same division numbers), Wikidata employees -> staff.
@@ -63,7 +79,7 @@ def main():
                         via = via_
                         break
             profiles.append({
-                "kvk": w["kvk"], "name": w.get("name"), "tradeNames": [],
+                "kvk": w["kvk"], "wikidata": w.get("wikidata"), "name": w.get("name"), "tradeNames": [],
                 "industryByName": bool(by_name), "industryVia": via,
                 "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or (w.get("descriptions") or [None])[0],
                 "sbi": [{"code": c} for c in w.get("naceCodes", [])],
@@ -89,6 +105,9 @@ def main():
             continue
         ms = (p.get("mainSbi") or "").strip()
         section = ms if re.fullmatch(r"[A-U]", ms) else sbi_section(ms)
+        ov = overrides.get(p.get("wikidata") or "") or overrides.get(p["kvk"])
+        if ov:
+            section = ov
         band, ict_band = size_bands(staff)
         g = gleif.get(p["kvk"], {})
         w = wiki.get(p["kvk"], {})
@@ -134,7 +153,7 @@ def main():
             "wikidata": w.get("wikidata"),
             "noMarketing": p.get("noMarketing"),
             "sources": [s for s, ok in (("kvk", not p.get("freeSource")), ("gleif", bool(g)), ("wikidata", bool(w))) if ok],
-            "industrySource": ((p.get("industryVia") or "wikidata industry name" if p.get("industryByName") else "wikidata NACE")
+            "industrySource": ("manual override" if ov else (p.get("industryVia") or "wikidata industry name" if p.get("industryByName") else "wikidata NACE")
                                if p.get("freeSource") else "kvk SBI") if section else None,
         })
 
