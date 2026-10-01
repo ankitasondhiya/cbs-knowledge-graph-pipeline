@@ -24,6 +24,15 @@ on:
         required: false
         default: true
         type: boolean
+      use_kvk_api:
+        description: "true = ALSO look up the listed companies at KVK (official industry, staff, address). COSTS MONEY: about EUR 0.02 per company. Needs the KVK_API_KEY secret. Ignored when companies/kvk_selection.csv exists."
+        required: false
+        default: false
+        type: boolean
+      kvk_max_calls:
+        description: "Spending cap for use_kvk_api: max KVK profile calls this run (300 = about EUR 6). Profiles are cached, so a company is never paid for twice within one run."
+        required: false
+        default: "300"
       dry_run:
         description: "true = build everything and show Aura usage, but write NOTHING to Neo4j."
         required: false
@@ -46,6 +55,9 @@ jobs:
       MIN_STAFF: ${{ github.event.inputs.min_staff }}
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
       DRY_RUN: ${{ github.event.inputs.dry_run }}
+      USE_KVK_API: ${{ github.event.inputs.use_kvk_api }}
+      KVK_MAX_CALLS: ${{ github.event.inputs.kvk_max_calls }}
+      KVK_API_KEY: ${{ secrets.KVK_API_KEY }}
       # optional: free key from developer.adzuna.com -> vacancy-based buying signals
       ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
       ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
@@ -71,8 +83,13 @@ jobs:
             echo "Using KVK selection file $SEL: the complete list of 100+ staff companies"
             python import_kvk_selection.py "$SEL" --min-staff "${MIN_STAFF:-100}"
             BUILD=""
+          elif [ "$USE_KVK_API" = "true" ] && [ -n "$KVK_API_KEY" ]; then
+            echo "Enriching the free list with KVK profiles (paid, capped at ${KVK_MAX_CALLS:-300} calls)"
+            python build_companies.py --free --min-revenue "$MINREV" --min-staff 0   # companies.json = who to look up
+            python fetch_kvk.py --from-companies --max-calls "${KVK_MAX_CALLS:-300}"
+            BUILD=""
           else
-            echo "No kvk_selection.csv/.xlsx committed -> free sources only (a SAMPLE of large, well-known companies)"
+            echo "No kvk_selection.csv/.xlsx and no KVK API -> free sources only (a SAMPLE of large, well-known companies)"
             BUILD="--free"
           fi
           python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"

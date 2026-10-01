@@ -115,6 +115,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--test", action="store_true", help="KVK test environment (fictitious companies, no key needed)")
     ap.add_argument("--kvk-file", help="CSV/TXT with KVK numbers to look up")
+    ap.add_argument("--from-companies", action="store_true",
+                    help="look up exactly the companies already in companies.json (e.g. the free Wikidata list) -- "
+                         "adds the official industry, staff count and address to them")
     ap.add_argument("--keywords", help="only GLEIF companies whose name contains one of these (comma-separated)")
     ap.add_argument("--max-calls", type=int, default=200, help="budget cap: max paid calls this run (default 200 = EUR 4)")
     a = ap.parse_args()
@@ -125,6 +128,12 @@ def main():
 
     if a.test:
         wanted = TEST_KVK_NUMBERS
+    elif a.from_companies:
+        from common import read_json
+        wanted = list(dict.fromkeys(c["kvk"] for c in read_json(LANDING / "companies.json", [])
+                                    if c.get("kvk") and not str(c["kvk"]).startswith("manual-")))
+        if not wanted:
+            sys.exit("No companies.json yet -- run build_companies.py (free) first.")
     elif a.kvk_file:
         wanted = kvk_numbers_from_file(a.kvk_file)
     else:
