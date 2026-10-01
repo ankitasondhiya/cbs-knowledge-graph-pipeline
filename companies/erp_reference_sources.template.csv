@@ -1,5 +1,6 @@
 vendor,url,erp
-# One row per vendor/partner page that lists customers (case studies, "klanten", customer logos).
-# vendor = label shown as the evidence source; url = the listing page (we follow case-study links on the same site);
-# erp = which product those customers run (AFAS, Exact Online, SAP S/4HANA, Microsoft Dynamics 365, Unit4, ...).
-# Add the real pages your team finds, e.g.:  AFAS,https://<afas klantenpagina>,AFAS
+# One row per PUBLIC page that lists customers (case studies / "klanten" / customer logos). We follow case-study links on the same site.
+# vendor = label shown as the evidence source; url = the listing page; erp = the product those customers run
+# (AFAS, Exact Online, Unit4, SAP S/4HANA, SAP ECC, Microsoft Dynamics 365, Oracle NetSuite, Infor, IFS, ...).
+# Where to look: search "<vendor> klantcases", "<vendor> klantverhalen", "<vendor> customer stories", "<vendor> referenties";
+# implementation partners (also ones we compete with) publish them too. Delete these comment lines or leave them -- lines starting with # are ignored.

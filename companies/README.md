@@ -113,19 +113,41 @@ Company.info or Graydon) -- add them as `revenue`/`revenueYear` in `companies.js
 **Run from GitHub instead of your PC:** Actions -> *CBS companies* -> Run workflow (uses your `NEO4J_*` secrets; start with `dry_run=true`).
 Then open the dashboard -> KPI dashboard -> **KPI 10 -- Target accounts** -> Run.
 
-## Sales playbook: which companies need help, and why now (KPI 10)
-KPI 10 ranks the named companies by an **opportunity score (0-100)** built from four things a seller actually asks:
+## Sales alignment: what we sell, and how KPI 10 serves it
+We sell **ERP implementation / migration** and **AI / data / automation services**, mainly to companies **above EUR 50m** across the Netherlands.
+KPIs 1-9 stay as they are -- they are the market context; KPI 10 is the account list sales works from. The **opportunity score (0-100)** is a
+transparent heuristic (every point is listed in the "Why now" column), tuned for that offer:
 
-| Question | Points | Where it comes from |
+| Question a seller asks | Points | Where it comes from |
 |---|---|---|
-| Is it worth the effort? (size) | up to 25 | revenue: exact where published, else estimate |
-| Is this an under-served market? | up to 15 | CBS: share of the industry's businesses without ERP (KPI 2) |
-| What do they run today? | up to 30 | ERP evidence: **legacy** 30 · unknown 12 · current 5 (see below) |
-| Why now? | up to 30 | job vacancies: **ERP project / migration being staffed** 30 · ERP-related role 10 |
+| Is it our kind of company? | up to 25 | revenue inside the **sweet spot** (default EUR 50m-500m, editable in the panel). Very large groups (>4x the top of the range or 50,000+ staff) get 6: they rarely buy like mid-market. |
+| Is the industry under-served on ERP? | up to 10 | CBS KPI 2: share of the industry's businesses without ERP |
+| Is the industry under-served on AI? | up to 10 | CBS KPI 3: share not yet using AI (greenfield for AI / data services) |
+| What do they run today? | up to 30 | **legacy** (medium+ evidence) 30 -> migration conversation · unknown 8-12 -> discovery call · modern ERP 10 -> AI/data on top |
+| Why now? | up to 25 | job vacancies: **ERP project / migration being staffed** 25 · ERP-related role 8 · data / AI / automation role 6 |
 
-The score is a transparent heuristic, not a prediction -- every point is listed in the "Why now" column together with a suggested next step
-(e.g. *ERP project under way: get in front of the selection team*, *Legacy ERP: open a migration conversation*, *ERP unknown: qualify first*).
-Use the **Focus** filter for "ERP project / migration under way", "Legacy ERP" or "ERP unknown", and download the list as CSV for the CRM.
+Account knowledge overrides the score: **customer** -> "expand scope" with the owner; **partner / competitor / do-not-contact** -> score 0;
+**lost** -> re-open only with a trigger. Use **Accounts -> New business only** to hide all of those. Focus filters: ERP project under way,
+legacy ERP, ERP unknown, hiring data/AI roles, in our size sweet spot. **Download CSV** exports score, reasons, next step, signals, status and owner for the CRM.
+
+### Missing a company you know? (coverage)
+The free sources only list companies with a Wikidata record + KVK number (about 5,000, mostly large / well known), so a mid-size manufacturer
+may be absent. Quick fix: add a row to `companies/extra_companies.csv` (`company, kvk (optional), section A-U, staff and/or revenue_eur, city, website`)
+-- it is added on the next *CBS companies* run, bypasses the staff/revenue filters and needs staff or revenue to be sized.
+Full fix: a **KVK selection file** of 100+ staff companies (`import_kvk_selection.py`, ~8,600 Dutch businesses) -- see "Buying KVK data" above.
+
+### The four steps (all free)
+1. **Team knowledge** -- sales / partners fill `erp_evidence.csv` (template: `erp_evidence.template.csv`). Sales people know names, not KVK numbers, so
+   a row may carry `company` instead of `kvk` (matched by name; unmatched names are listed in the log, never guessed).
+   Columns: `kvk | company | erp | confidence | source | evidence_url | note | account_status | owner`. A row can hold an ERP fact, an account
+   status (customer / prospect / lost / partner / competitor / do-not-contact), or both. Commit it into `companies/`; the *CBS companies* workflow picks it up.
+2. **Vendor customer pages** -- list the public customer / case-study pages of AFAS, Exact, Unit4, Microsoft and SAP partners (and implementers we compete
+   with or partner with) in `erp_reference_sources.csv` (`vendor,url,erp`). Find them by searching "<vendor> klantcases", "<vendor> klantverhalen",
+   "<vendor> customer stories", "<vendor> referenties". Named in the headline/URL = high confidence, elsewhere on the page = medium.
+3. **Job vacancies** -- create a free key at developer.adzuna.com and add the repo secrets `ADZUNA_APP_ID` and `ADZUNA_APP_KEY`
+   (Settings -> Secrets and variables -> Actions). The workflow then runs `signals_enrich.py --adzuna` (ERP projects / roles and data / AI / automation roles).
+   Or commit a licensed export as `job_postings.csv` (`company,title,text,url,date`). Free-tier limits apply; written from Adzuna's docs, not yet run live.
+4. **Mid-market tuning** -- the sweet spot and the weights above; change the sweet spot in the panel (remembered per browser) or the weights in `tpScore` (`viz/graph_explorer.html`).
 
 ### Gathering the ERP evidence (all optional, all merged into one `erp.json`, strongest evidence wins)
 | Step | Command | Confidence |

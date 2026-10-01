@@ -8,6 +8,7 @@ companies.json -> Neo4j (Aura), linked to the EXISTING CBS graph.
         -[:USES_ERP {source, confidence, lifecycle, evidence}]-> (:ERPSystem {name, vendor, lifecycle})
                                         only for companies in erp.json (erp_enrich.py / signals_enrich.py); replaced on every run
     (:Company).signals / signalCount / erpChangeSignal   job-vacancy buying signals from signals.json
+    (:Company).accountStatus / accountOwner / accountNote   our own account knowledge from accounts.json
 
 Size band, SBI codes, revenue etc. are PROPERTIES, not extra nodes -- that
 keeps it at ~2-3 relationships per company, so ~72k companies (all NL
@@ -112,9 +113,35 @@ def load_signals(session, dry_run):
     print(f"  signals written on {n:,} companies.")
 
 
+LOAD_ACCOUNTS = """
+UNWIND $rows AS row
+MATCH (c:Company {kvk: row.kvk})
+SET c.accountStatus = row.status, c.accountOwner = row.owner, c.accountNote = row.note
+RETURN count(c) AS n
+"""
+
+
+def load_accounts(session, dry_run):
+    """accounts.json (our own account knowledge: customer / prospect / lost / partner / competitor / do-not-contact,
+    owner) -> properties on :Company, shown in KPI 10 so sales never cold-calls a customer."""
+    acc = read_json(LANDING / "accounts.json", {})
+    if not acc:
+        print("No accounts.json -- add account_status / owner columns to erp_evidence.csv (skipping).")
+        return
+    rows = [{"kvk": k, "status": v.get("status"), "owner": v.get("owner"), "note": v.get("note")} for k, v in acc.items()]
+    print(f"Accounts: {len(rows):,} companies with a status / owner")
+    if dry_run:
+        return
+    session.run("MATCH (c:Company) WHERE c.accountStatus IS NOT NULL OR c.accountOwner IS NOT NULL "
+                "REMOVE c.accountStatus, c.accountOwner, c.accountNote").consume()
+    n = sum(session.run(LOAD_ACCOUNTS, rows=rows[i:i + BATCH]).single()["n"] for i in range(0, len(rows), BATCH))
+    print(f"  account status written on {n:,} companies.")
+
+
 def load_erp(session, dry_run):
     from erp_enrich import slug
     load_signals(session, dry_run)
+    load_accounts(session, dry_run)
     recs = read_json(LANDING / "erp.json", [])
     if not recs:
         print("No erp.json -- run erp_enrich.py to add ERP evidence (skipping ERP links).")
