@@ -2,4 +2,4 @@ company,kvk,section,staff,revenue_eur,revenue_year,city,website,note
 # Companies sales knows that the free sources miss. Fill: company + section (A-U, e.g. C = manufacturing) + city, and AT LEAST ONE of staff or revenue_eur
 # (otherwise KPI 10 cannot size the company). kvk is optional. Lines starting with # are ignored. Example (replace the numbers with real ones):
 # Auping,,C,,,,Deventer,https://www.auping.com,bed and mattress manufacturer
-Auping,,C,<staff>,,,Deventer,https://www.auping.com,bed and mattress manufacturer
+Auping,,C,650,,,Deventer,https://www.auping.com,bed and mattress manufacturer
