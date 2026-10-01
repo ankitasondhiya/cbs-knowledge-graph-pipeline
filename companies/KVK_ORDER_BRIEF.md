@@ -66,3 +66,35 @@ so you can see the exact record format before paying.
 | **Which ERP** | not in any register: your team's knowledge, vendor customer pages, job vacancies, a technographics provider | partial |
 | **AI / automation signals** | job vacancies (data / AI / automation roles), website mentions | partial |
 | Pitch angle | CBS industry gaps (ERP, AI) + the signals above -> score and next-step text in KPI 10 | covered |
+
+
+---
+
+# What the KVK API agreement and terms of use mean for us (read before the first production call)
+
+Source: KVK's email of 1 Oct 2026, the *KVK API Agreement v2.2*, the *Description of Service Levels* and the *Gebruiksvoorwaarden* (terms of use). Not legal advice -- have the signatory / legal read them.
+
+**Process (from KVK's email)**
+1. An authorised signatory signs the agreement (wet signature or DocuSign; two signatures if the company has joint representation) and returns it to **account@kvk.nl**.
+2. In the same email state **what the API is used for, how many queries are expected, and a 06 mobile number**.
+3. Within 3 working days: an email with a login for the *Business Register* portal, where the **API costs are visible**.
+4. Within 5 working days: an email with the **API key**.
+
+**Cost safety (KVK warns explicitly: programming mistakes -> very high bills that are NOT credited)**
+- Test environment is free; **production calls -- also accidental or "test" ones -- are billed** at KVK's published tariffs (kvk.nl/tarieven).
+- Our safeguards: a hard cap (`kvk_max_calls`, default 20), a restored cache so a company is never paid for twice, manual runs only (never schedule it).
+- Do this: first production run with **20** calls, check the cost in the portal, then raise slowly. Never put the key anywhere except the repository secret.
+- The agreement lets you name a person who can view spending -- do that.
+
+**What the API cannot do (KVK says so itself):** it cannot select companies by SBI code or size; it only looks up by company name or KVK number.
+For target-group lists use the **selection file** (bestandsselectie).
+
+**Terms of use that matter for a sales list**
+- **Own use is allowed** (supporting your own internal work processes, e.g. our sales team prospecting).
+- **No passing on** ("Doorgifte"): KVK data may not be handed or sold to third parties, and a company may not serve several clients from its own collection of KVK data. -> Do not give customers the KPI 10 list or CSV, and do not expose it in a customer-facing product, without KVK's agreement.
+- **If KVK-based information is offered to third parties** (re-use), it must show the retrieval date and the sentence *"Voor actuele informatie met juridische derdenwerking dient u altijd het Handelsregister te raadplegen."* and must not use the KVK logo.
+- **Non-mailing indicator:** where active, no direct marketing by post / door-to-door (KVK may cancel the contract). We load the flag and show "no marketing"; the safe rule is to exclude those companies from campaigns.
+- **Personal data:** sole proprietorships (eenmanszaken), officers, contact details of natural persons need a separate request to re-use and must also satisfy GDPR / Telecommunicatiewet. -> Our target list is 100+ staff companies; exclude sole proprietors and do not store officer names.
+- **No scraping** of the register; the API key is **personal -- never share it**; rotate it periodically.
+- KVK may **audit** compliance, and may cancel with notice.
+- Contract has no fixed term; cancel in writing (effective at the end of the following calendar month).

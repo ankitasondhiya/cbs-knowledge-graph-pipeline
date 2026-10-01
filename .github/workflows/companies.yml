@@ -30,9 +30,9 @@ on:
         default: false
         type: boolean
       kvk_max_calls:
-        description: "Spending cap for use_kvk_api: max KVK profile calls this run (300 = about EUR 6). Profiles are cached, so a company is never paid for twice within one run."
+        description: "Spending cap for use_kvk_api: max KVK PAID profile calls this run (start with 20). Profiles already fetched in an earlier run are restored from the workflow cache and are NOT paid for again. Never schedule this workflow."
         required: false
-        default: "300"
+        default: "20"
       dry_run:
         description: "true = build everything and show Aura usage, but write NOTHING to Neo4j."
         required: false
@@ -69,6 +69,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Restore KVK profile cache (so companies already fetched are never paid for twice)
+        uses: actions/cache@v4
+        with:
+          path: landing_zone/companies/kvk_profiles.jsonl
+          key: kvk-profiles-${{ github.run_id }}
+          restore-keys: |
+            kvk-profiles-
       - run: pip install -r requirements.txt
 
       - name: Company list - KVK selection file if you committed one, else Wikidata + GLEIF only
@@ -84,9 +91,9 @@ jobs:
             python import_kvk_selection.py "$SEL" --min-staff "${MIN_STAFF:-100}"
             BUILD=""
           elif [ "$USE_KVK_API" = "true" ] && [ -n "$KVK_API_KEY" ]; then
-            echo "Enriching the free list with KVK profiles (paid, capped at ${KVK_MAX_CALLS:-300} calls)"
+            echo "Enriching the free list with KVK profiles (paid, capped at ${KVK_MAX_CALLS:-20} calls)"
             python build_companies.py --free --min-revenue "$MINREV" --min-staff 0   # companies.json = who to look up
-            python fetch_kvk.py --from-companies --max-calls "${KVK_MAX_CALLS:-300}"
+            python fetch_kvk.py --from-companies --max-calls "${KVK_MAX_CALLS:-20}"
             BUILD=""
           else
             echo "No kvk_selection.csv/.xlsx and no KVK API -> free sources only (a SAMPLE of large, well-known companies)"
