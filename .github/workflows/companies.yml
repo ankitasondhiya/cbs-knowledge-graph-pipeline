@@ -59,13 +59,25 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
 
-      - name: Wikidata (revenue, employees, industry) and GLEIF (LEI, parents)
+      - name: Company list - KVK selection file if you committed one, else Wikidata + GLEIF only
         run: |
-          python fetch_wikidata.py
-          python fetch_gleif.py
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
+          MINREV="$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")"
+          python fetch_wikidata.py      # exact revenue / employees for the large, well-known companies (free)
+          python fetch_gleif.py         # LEI + legal data for them (free)
+          SEL=""
+          [ -f kvk_selection.csv ] && SEL="kvk_selection.csv"
+          [ -z "$SEL" ] && [ -f kvk_selection.xlsx ] && SEL="kvk_selection.xlsx" && pip install openpyxl
+          if [ -n "$SEL" ]; then
+            echo "Using KVK selection file $SEL: the complete list of 100+ staff companies"
+            python import_kvk_selection.py "$SEL" --min-staff "${MIN_STAFF:-100}"
+            BUILD=""
+          else
+            echo "No kvk_selection.csv/.xlsx committed -> free sources only (a SAMPLE of large, well-known companies)"
+            BUILD="--free"
+          fi
+          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
           python fetch_gleif.py parents
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
+          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
 
       - name: ERP evidence (your CSV, vendor reference pages, website scan)
         run: |

@@ -134,7 +134,8 @@ legacy ERP, ERP unknown, hiring data/AI roles, in our size sweet spot. **Downloa
 The free sources only list companies with a Wikidata record + KVK number (about 5,000, mostly large / well known), so a mid-size manufacturer
 may be absent. Quick fix: add a row to `companies/extra_companies.csv` (`company, kvk (optional), section A-U, staff and/or revenue_eur, city, website`)
 -- it is added on the next *CBS companies* run, bypasses the staff/revenue filters and needs staff or revenue to be sized.
-Full fix: a **KVK selection file** of 100+ staff companies (`import_kvk_selection.py`, ~8,600 Dutch businesses) -- see "Buying KVK data" above.
+Full fix: a **KVK selection file** of 100+ staff companies (~8,600 Dutch businesses) -- order brief in `KVK_ORDER_BRIEF.md`. Commit it as
+`companies/kvk_selection.csv` (if the licence allows) and the *CBS companies* workflow builds the whole list from it automatically.
 
 ### The four steps (all free)
 1. **Team knowledge** -- sales / partners fill `erp_evidence.csv` (template: `erp_evidence.template.csv`). Sales people know names, not KVK numbers, so
