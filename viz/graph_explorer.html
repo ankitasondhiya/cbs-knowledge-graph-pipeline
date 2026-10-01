@@ -2277,7 +2277,7 @@ async function renderCompanyList(kpi, branchLabel, td) {
       const staff = n(c.staff);
       const exact = n(c.revenue);
       const est = n(c.est);
-      const meta = [c.city, c.kvk ? `KVK ${c.kvk}` : '', c.mainSbiDesc, c.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+      const meta = [c.city, (c.kvk && !/^(wd|manual)-/.test(c.kvk)) ? `KVK ${c.kvk}` : '', c.mainSbiDesc, c.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
       const group = c.ultimateParentName || c.parentName;
       const nmi = c.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out) -- don&#39;t approach for campaigns</div>' : '';
       return `<tr><td>${escapeHtml(c.name || '--')}<div class="kpi-label-nl">${escapeHtml(meta)}</div>${nmi}`
@@ -2505,7 +2505,7 @@ function tpRender() {
   if (!rows.length) { table.innerHTML = ''; table.style.display = 'none'; status.textContent += ' Nothing matches these filters.'; return; }
   const SHOW = 500;
   const body = rows.slice(0, SHOW).map(r => {
-    const meta = [r.city, r.kvk ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+    const meta = [r.city, (r.kvk && !/^(wd|manual)-/.test(r.kvk)) ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
     const group = r.ultimateParentName || r.parentName;
     const t = translateLabel(r.branch || '');
     const nmi = (r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '')

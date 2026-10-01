@@ -44,6 +44,7 @@ def main():
     gleif = {r["kvk"]: r for r in read_jsonl(LANDING / "gleif_nl.jsonl") if r.get("kvk")}
     parents = read_json(LANDING / "gleif_parents.json", {})
     wiki = {r["kvk"]: r for r in read_json(LANDING / "wikidata_revenue.json", [])}
+    facts = read_json(LANDING / "website_facts.json", {})   # website_facts.py: KvK / staff / address / revenue from the company's own site
 
     # Manual industry overrides (companies/industry_overrides.csv: wikidata | kvk | name | section A-U | note).
     # They win over every automatic guess -- add a row whenever a company lands in "(no industry)" or the wrong one.
@@ -78,12 +79,21 @@ def main():
                     if by_name:
                         via = via_
                         break
+            fx = facts.get(w["kvk"]) or {}
+            if not (code or letter_only or by_name) and fx.get("sectionGuess"):
+                by_name, via = fx["sectionGuess"], "company website (text)"
+            staff_w = w.get("employees") if w.get("employees") is not None else fx.get("staff")
+            fa = fx.get("address") or {}
             profiles.append({
+                "kvkReal": (fx.get("kvk") if str(w["kvk"]).startswith("wd-") else None),
+                "websiteUsed": bool(fx) and (w.get("employees") is None and fx.get("staff") is not None
+                                             or str(w["kvk"]).startswith("wd-") and bool(fx.get("kvk")) or bool(fa)),
                 "kvk": w["kvk"], "wikidata": w.get("wikidata"), "name": w.get("name"), "tradeNames": [],
                 "industryByName": bool(by_name), "industryVia": via,
                 "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or (w.get("descriptions") or [None])[0],
                 "sbi": [{"code": c} for c in w.get("naceCodes", [])],
-                "staff": w.get("employees"), "address": {"city": w.get("city")}, "websites": [w["website"]] if w.get("website") else [],
+                "staff": staff_w, "address": {"city": w.get("city") or fa.get("city"), "street": fa.get("street"), "postcode": fa.get("postcode")},
+                "websites": [w["website"]] if w.get("website") else [],
                 "freeSource": True,
             })
     else:
@@ -99,6 +109,8 @@ def main():
         # its published revenue already proves it's large (>= --min-revenue).
         _w = wiki.get(p["kvk"]) or {}
         w_rev = _w.get("revenue") if is_euro(_w.get("revenueCurrency")) else None
+        if w_rev is None:
+            w_rev = (facts.get(p["kvk"]) or {}).get("revenue")
         unknown_ok = a.free and staff is None and w_rev is not None and w_rev >= (a.min_revenue or 0)
         if a.min_staff and not unknown_ok and (staff is None or staff < a.min_staff):
             skipped[f"fewer than {a.min_staff} staff (or unknown)"] += 1
@@ -109,10 +121,13 @@ def main():
         if ov:
             section = ov
         band, ict_band = size_bands(staff)
-        g = gleif.get(p["kvk"], {})
+        g = gleif.get(p.get("kvkReal") or p["kvk"], {})
         w = wiki.get(p["kvk"], {})
         par = parents.get(g.get("lei"), {}) if g.get("lei") else {}
         rev = w.get("revenue") if is_euro(w.get("revenueCurrency")) else None
+        rev_site = None
+        if rev is None and (facts.get(p["kvk"]) or {}).get("revenue"):
+            rev = rev_site = facts[p["kvk"]]["revenue"]      # stated by the company itself (text) -- labelled as such
         if a.min_revenue and rev is not None and rev < a.min_revenue:
             skipped[f"published revenue below EUR {a.min_revenue / 1e6:,.0f}m"] += 1
             continue
@@ -123,7 +138,9 @@ def main():
             skipped["no readable company name (unlabelled Wikidata item)"] += 1
             continue
         out.append({
-            "kvk": p["kvk"],
+            "kvk": p.get("kvkReal") or p["kvk"],
+            "uriKey": p["kvk"] if str(p["kvk"]).startswith("wd-") else None,     # stable node id even after the KvK number is found
+            "kvkSource": "company website" if p.get("kvkReal") else None,
             "name": name,
             "legalName": g.get("name"),
             "tradeNames": p.get("tradeNames", []),
@@ -149,10 +166,11 @@ def main():
             "ultimateParentName": (par.get("ultimate") or {}).get("name"),
             "revenue": rev,
             "revenueYear": w.get("revenueYear") if rev else None,
-            "revenueSource": "wikidata (exact)" if rev else None,
+            "revenueSource": (("company website (text)" if rev_site else "wikidata (exact)") if rev else None),
             "wikidata": w.get("wikidata"),
             "noMarketing": p.get("noMarketing"),
-            "sources": [s for s, ok in (("kvk", not p.get("freeSource")), ("gleif", bool(g)), ("wikidata", bool(w))) if ok],
+            "sources": [s for s, ok in (("kvk", not p.get("freeSource")), ("gleif", bool(g)), ("wikidata", bool(w)),
+                                         ("website", bool(p.get("websiteUsed")))) if ok],
             "industrySource": ("manual override" if ov else (p.get("industryVia") or "wikidata industry name" if p.get("industryByName") else "wikidata NACE")
                                if p.get("freeSource") else "kvk SBI") if section else None,
         })

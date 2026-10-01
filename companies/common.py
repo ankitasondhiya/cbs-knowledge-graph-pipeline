@@ -176,6 +176,7 @@ TYPE_KEYWORDS = [
     ("water company", "E"), ("water supply", "E"), ("waste management", "E"),
     ("telecommunication", "J"), ("telecom", "J"), ("broadcaster", "J"), ("publisher", "J"), ("newspaper", "J"),
     ("record label", "J"), ("software", "J"), ("internet", "J"), ("game developer", "J"), ("it service", "J"),
+    ("fabrikant", "C"), ("producent van", "C"), ("vervaardig", "C"), ("productiebedrijf", "C"), ("matras", "C"), ("meubel", "C"),
     ("brewery", "C"), ("dairy", "C"), ("manufacturer", "C"), ("producer of", "C"), ("pharmaceutical", "C"), ("biotech", "C"),
     ("chemical", "C"), ("shipyard", "C"), ("semiconductor", "C"), ("automobile", "C"), ("car manufacturer", "C"),
     ("aircraft", "C"), ("food company", "C"), ("packaging", "C"), ("paper", "C"), ("steel", "C"),

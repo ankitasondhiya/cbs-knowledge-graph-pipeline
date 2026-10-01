@@ -130,6 +130,17 @@ Account knowledge overrides the score: **customer** -> "expand scope" with the o
 **lost** -> re-open only with a trigger. Use **Accounts -> New business only** to hide all of those. Focus filters: ERP project under way,
 legacy ERP, ERP unknown, hiring data/AI roles, in our size sweet spot. **Download CSV** exports score, reasons, next step, signals, status and owner for the CRM.
 
+### Improving coverage without KVK (free route)
+1. **Wider Wikidata search** (`fetch_wikidata.py`): besides companies that list a KvK number, it now also takes any Dutch company (country / HQ = Netherlands, a kind of business)
+   with **100+ employees or a published revenue**, even without a KvK number (`--no-nl-wide` switches it off). Such companies are keyed `wd-<QID>` until a KvK number is found.
+2. **The company's own website** (`website_facts.py`, run by the workflow when `scan_websites` is on): Dutch law requires the **KvK number** on a company's site / terms, so the scanner
+   reads the home page plus about / contact / terms / privacy pages (robots.txt respected) and picks up the KvK number, **staff** ("ruim 650 medewerkers"), **address** (schema.org / footer),
+   revenue where the company states it, and an **industry hint** from the page title / description. These only **fill gaps** (Wikidata / your own files win) and are labelled
+   "company website (text)" -- they can be group-wide or marketing language. KvK numbers found this way are then used for the GLEIF lookup.
+3. **Industry**: NACE code -> Wikidata industry -> kind / description -> website text -> `industry_overrides.csv`.
+4. **Your own list**: `extra_companies.csv`.
+No register data is used, so KVK's terms do not apply to this route (the company's own public website and Wikidata / GLEIF are the sources).
+
 ### Missing a company you know? (coverage)
 The free sources only list companies with a Wikidata record + KVK number (about 5,000, mostly large / well known), so a mid-size manufacturer
 may be absent. Quick fix: add a row to `companies/extra_companies.csv` (`company, kvk (optional), section A-U, staff and/or revenue_eur, city, website`)

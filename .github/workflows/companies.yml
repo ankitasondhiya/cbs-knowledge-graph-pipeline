@@ -19,6 +19,15 @@ on:
         description: "Only companies with at least this many working persons (0 = no floor)."
         required: false
         default: "100"
+      scan_websites:
+        description: "true = read each candidate company's OWN website (robots.txt respected) to find its KVK number, staff count, address and industry hints where Wikidata lacks them. Free; adds ~10-30 min."
+        required: false
+        default: true
+        type: boolean
+      website_scan_max:
+        description: "Max websites to scan per run (largest / most incomplete first)."
+        required: false
+        default: "400"
       detect_erp:
         description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
         required: false
@@ -54,6 +63,8 @@ jobs:
       MIN_REV_M: ${{ github.event.inputs.min_revenue_m }}
       MIN_STAFF: ${{ github.event.inputs.min_staff }}
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
+      SCAN_WEBSITES: ${{ github.event.inputs.scan_websites }}
+      WEB_MAX: ${{ github.event.inputs.website_scan_max }}
       DRY_RUN: ${{ github.event.inputs.dry_run }}
       USE_KVK_API: ${{ github.event.inputs.use_kvk_api }}
       KVK_MAX_CALLS: ${{ github.event.inputs.kvk_max_calls }}
@@ -82,6 +93,9 @@ jobs:
         run: |
           MINREV="$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")"
           python fetch_wikidata.py      # exact revenue / employees for the large, well-known companies (free)
+          if [ "$SCAN_WEBSITES" != "false" ]; then
+            python website_facts.py --max "${WEB_MAX:-400}"   # KvK number / staff / address / industry hints from the companies' own sites (free)
+          fi
           python fetch_gleif.py         # LEI + legal data for them (free)
           SEL=""
           [ -f kvk_selection.csv ] && SEL="kvk_selection.csv"

@@ -35,7 +35,7 @@ BASE = "https://data.cbs-knowledge-graph.example/id/"
 FREE_NODES, FREE_RELS, SAFETY = 200_000, 400_000, 0.90
 BATCH = 500
 
-PROPS = ["kvk", "name", "legalName", "tradeNames", "mainSbi", "mainSbiDesc", "sbiCodes", "section", "staff",
+PROPS = ["kvk", "kvkSource", "name", "legalName", "tradeNames", "mainSbi", "mainSbiDesc", "sbiCodes", "section", "staff",
          "sizeBand", "ictSizeBand", "legalForm", "city", "postcode", "street", "website", "lei", "leiStatus",
          "parentName", "ultimateParentName", "revenue", "revenueYear", "revenueSource", "wikidata", "sources",
          "industrySource", "noMarketing"]
@@ -176,7 +176,7 @@ def rows_for(companies, test):
         props["loadedAt"] = now
         if test:
             props["testData"] = True
-        rows.append({"uri": BASE + "company/" + c["kvk"], "props": props, "branchLabel": c.get("branchLabel"),
+        rows.append({"uri": BASE + "company/" + (c.get("uriKey") or c["kvk"]), "props": props, "branchLabel": c.get("branchLabel"),
                      "city": c.get("city"), "parentLei": c.get("parentLei"), "parentName": c.get("parentName")})
     return rows
 
