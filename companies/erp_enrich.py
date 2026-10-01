@@ -68,7 +68,8 @@ def read_csv_evidence(path, companies=None):
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
         for row in csv.DictReader(f, dialect=dialect):
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-            kvk = norm_kvk(row.get("kvk")) if row.get("kvk") else None
+            kv = row.get("kvk") or ""
+            kvk = kv if re.match(r"(?i)^(wd|manual)-", kv) else (norm_kvk(kv) if kv else None)   # keep synthetic ids as they are
             if not kvk and row.get("company"):
                 key = name_key(row["company"])
                 kvk = index.get(key) if key else None
@@ -81,12 +82,12 @@ def read_csv_evidence(path, companies=None):
                 continue
             if status or row.get("owner"):
                 accounts[kvk] = {"status": status, "owner": row.get("owner") or None, "note": row.get("note") or None}
-            if erp:
-                conf = (row.get("confidence") or "high").lower()
-                name, vendor, life = canonical(erp)
+            conf = (row.get("confidence") or row.get("erp_confidence") or "high").split(";")[0].strip().lower()
+            for one in [x.strip() for x in re.split(r"[;,]", erp or "") if x.strip()]:     # "AFAS; Exact" -> two records
+                name, vendor, life = canonical(one)
                 out.append({"kvk": kvk, "erp": name, "vendor": vendor, "lifecycle": life,
                             "confidence": conf if conf in RANK else "high",
-                            "source": row.get("source") or "our own knowledge (csv)",
+                            "source": row.get("source") or row.get("erp_source") or "our own knowledge (csv)",
                             "evidence": row.get("note") or None, "evidenceUrl": row.get("evidence_url") or None})
     return out, accounts, unmatched
 
@@ -116,11 +117,35 @@ def _robots_ok(session, url, cache):
     return cache[host].can_fetch(UA, url)
 
 
-def detect_site(session, kvk, website, max_pages=4):
+VAC_PATH = re.compile(r"vacatur|vacanc|/jobs?\b|/job/|werken|career|carri|functie|opening|solliciteer", re.I)
+CAREER_INDEX = re.compile(r"vacatur|vacancies|career|carri|werken-?bij|jobs?\b", re.I)
+
+
+def _site(host):
+    """'werkenbij.philips.com' -> 'philips.com' (careers sites often live on a sub-domain)."""
+    p = host.lower().split(":")[0].split(".")
+    return ".".join(p[-2:]) if len(p) >= 2 else host
+
+
+def detect_site(session, kvk, website, max_pages=10):
+    """Home page -> about / careers / privacy pages -> from a careers index, individual vacancy pages.
+    An ERP product named on the company's OWN vacancy page ('ervaring met SAP S/4HANA') is medium evidence."""
     if not website:
         return []
     url = website if re.match(r"https?://", website, re.I) else "https://" + website
     cache, seen, todo, found = {}, set(), [url], {}
+    home_site = _site(urlparse(url).netloc)
+
+    def links(html, base, pattern, cap):
+        out = []
+        for href in re.findall(r'href=["\']([^"\'#]+)', html, re.I):
+            full = urljoin(base, href).split("?")[0]
+            pu = urlparse(full)
+            if pu.scheme in ("http", "https") and _site(pu.netloc) == home_site and pattern.search(pu.netloc + pu.path) \
+                    and full not in seen and full not in todo and len(out) < cap:
+                out.append(full)
+        return out
+
     while todo and len(seen) < max_pages:
         u = todo.pop(0)
         if u in seen or not _robots_ok(session, u, cache):
@@ -133,14 +158,17 @@ def detect_site(session, kvk, website, max_pages=4):
             html = r.text[:600_000]
         except Exception:
             continue
+        path = urlparse(r.url).netloc + urlparse(r.url).path
+        on_vacancy = bool(VAC_PATH.search(path))
         for h in scan_html(html, u):
+            if on_vacancy and h["confidence"] == "low":
+                h = {**h, "confidence": "medium", "source": "company vacancy page text mention"}
             if RANK[h["confidence"]] > RANK.get(found.get(h["erp"], {}).get("confidence", ""), 0):
                 found[h["erp"]] = {**h, "kvk": kvk}
-        if len(seen) == 1:  # from the home page, follow a few careers / about / privacy links on the same host
-            for href in re.findall(r'href=["\']([^"\'#]+)', html, re.I):
-                full = urljoin(r.url, href)
-                if urlparse(full).netloc == urlparse(r.url).netloc and PAGE_HINT.search(urlparse(full).path):
-                    todo.append(full)
+        if len(seen) == 1:
+            todo += links(html, r.url, PAGE_HINT, 6)
+        if CAREER_INDEX.search(path):
+            todo[:0] = links(html, r.url, VAC_PATH, 4)       # individual job ads first
         time.sleep(0.3)
     return list(found.values())
 

@@ -52,7 +52,10 @@ GENERIC_ERP = re.compile(r"\berp\b|enterprise resource planning|bedrijfssoftware
 ADZUNA_QUERIES = ["ERP implementatie", "ERP migratie", "ERP selectie", "S/4HANA", "SAP ECC", "Dynamics 365 Business Central",
                   "Dynamics NAV", "AFAS", "Exact Online", "Exact Globe", "NetSuite", "Unit4", "Infor LN", "Baan",
                   "Oracle Fusion", "ERP key user", "functioneel beheerder ERP", "application manager ERP",
-                  "data engineer", "data platform", "machine learning engineer", "process automation", "RPA developer"]
+                  "data engineer", "data platform", "machine learning engineer", "process automation", "RPA developer",
+                  "SAP consultant", "SAP beheerder", "SAP key user", "Business Central", "Microsoft Dynamics", "Navision",
+                  "Exact Online consultant", "AFAS consultant", "financial systems analyst", "applicatiebeheerder ERP",
+                  "ERP programmamanager", "ERP projectmanager", "business analist ERP"]
 
 
 def classify(title, text):
@@ -128,7 +131,7 @@ def fetch_adzuna(pages):
         for p in range(1, pages + 1):
             try:
                 r = requests.get(f"https://api.adzuna.com/v1/api/jobs/nl/search/{p}", timeout=30,
-                                 params={"app_id": app_id, "app_key": app_key, "what": q, "results_per_page": 50,
+                                 params={"app_id": app_id, "app_key": app_key, "what": q, "results_per_page": 50, "max_days_old": 180,
                                          "content-type": "application/json", "sort_by": "date"})
                 r.raise_for_status()
                 results = r.json().get("results", [])
@@ -148,7 +151,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jobs-csv", help="vacancy export: company, title, [text], [url], [date], [kvk]")
     ap.add_argument("--adzuna", action="store_true", help="search the Adzuna API (needs ADZUNA_APP_ID / ADZUNA_APP_KEY)")
-    ap.add_argument("--pages", type=int, default=3, help="Adzuna pages (50 vacancies each) per search term")
+    ap.add_argument("--pages", type=int, default=5, help="Adzuna pages (50 vacancies each) per search term")
     ap.add_argument("--companies", default=str(LANDING / "companies.json"))
     a = ap.parse_args()
     if not a.jobs_csv and not a.adzuna:
