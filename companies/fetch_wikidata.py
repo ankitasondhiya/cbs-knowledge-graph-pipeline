@@ -60,13 +60,25 @@ KVK_ANCHOR = "?item wdt:%(p)s ?kvk ."
 # 2) Dutch companies WITHOUT a KvK number on Wikidata: country (or headquarters country) = Netherlands, a kind of business,
 #    and either 100+ employees or a published revenue. Their KvK number is found later from the company's own website
 #    (Dutch law requires it there). No KvK number yet -> the record is keyed 'wd-<QID>'.
-NL_ANCHOR = """{ ?item wdt:P17 wd:Q55 } UNION { ?item wdt:P159 ?hq . ?hq wdt:P17 wd:Q55 }
-  ?item wdt:P31/wdt:P279* wd:Q4830453 .
+# Two SIMPLE, selective queries (a transitive "kind of business" test over all Dutch items timed out on the public endpoint):
+#   a) Dutch items with 100+ employees   b) Dutch items with a published revenue
+# Non-companies that sneak in (municipalities, places ...) are dropped afterwards by their kind (NON_COMPANY).
+NL_ANCHORS = [
+    """?item wdt:P17 wd:Q55 .
+  ?item wdt:P1128 ?e0 . FILTER(?e0 >= 100)
   FILTER NOT EXISTS { ?item wdt:%(p)s [] }
-  { ?item wdt:P1128 ?e0 . FILTER(?e0 >= 100) } UNION { ?item wdt:P2139 ?r0 }
-  BIND(?item AS ?kvk)"""
+  BIND(?item AS ?kvk)""",
+    """?item wdt:P17 wd:Q55 .
+  ?item wdt:P2139 ?r0 .
+  FILTER NOT EXISTS { ?item wdt:%(p)s [] }
+  BIND(?item AS ?kvk)""",
+]
+NON_COMPANY = re.compile(r"(?i)gemeente|municipality|city|town|village|dorp|stad\b|country|province|provincie|human settlement|"
+                         r"neighbourhood|wijk|island|eiland|river|lake|street|straat|human|person|persoon|building|gebouw|"
+                         r"railway station|station\b|church|kerk|museum building|polder|waterschap|water board")
 
 def run_sparql(query, retries=3):
+    # (Wikidata's public endpoint stops queries after ~60 s; a timeout shows up here as an HTTP 500/504)
     """Public Wikidata endpoint: sometimes times out / 5xx, and labels can contain raw control characters."""
     for attempt in range(retries):
         try:
@@ -92,9 +104,9 @@ SELECT ?item ?typeLabel ?desc WHERE {
 }"""
 
 
-def collect(prop, nace, nl_mode):
-    anchor = (NL_ANCHOR if nl_mode else KVK_ANCHOR) % {"p": prop}
-    data = run_sparql(QUERY % {"anchor": anchor, "nace": nace})
+def collect(prop, nace, nl_mode, anchor_tpl=None):
+    anchor = (anchor_tpl or KVK_ANCHOR) % {"p": prop}
+    data = run_sparql(QUERY % {"anchor": anchor, "nace": nace}, retries=1 if nl_mode else 3)
     best = {}
     for b in data["results"]["bindings"]:
         qid = b["item"]["value"].rsplit("/", 1)[-1]
@@ -128,7 +140,7 @@ def collect(prop, nace, nl_mode):
                            revenueCurrency=b.get("unitLabel", {}).get("value"))
     try:
         by_qid = {r["wikidata"]: r for r in best.values()}
-        for b in run_sparql(QUERY_TYPES % {"anchor": anchor})["results"]["bindings"]:
+        for b in run_sparql(QUERY_TYPES % {"anchor": anchor}, retries=1 if nl_mode else 3)["results"]["bindings"]:
             rec = by_qid.get(b["item"]["value"].rsplit("/", 1)[-1])
             if rec is None:
                 continue
@@ -140,6 +152,9 @@ def collect(prop, nace, nl_mode):
                 rec["descriptions"].append(d)
     except Exception as e:   # optional enrichment
         print(f"(kind/description lookup skipped: {e})")
+    if nl_mode:     # drop places / municipalities / persons that carry an employee count
+        for k in [k for k, r in best.items() if any(NON_COMPANY.search(t) for t in r["types"])]:
+            del best[k]
     for rec in best.values():   # SPARQL row order varies between runs -> sort, so the industry picked is stable
         rec["naceCodes"].sort(); rec["industries"].sort(); rec["types"].sort(); rec["descriptions"].sort()
     return best
@@ -155,14 +170,16 @@ def main():
     nace = f"OPTIONAL {{ ?industry wdt:{nace_p} ?nace }}" if nace_p else ""
     best = collect(prop, nace, False)
     if not a.no_nl_wide:
-        try:   # optional: Dutch companies Wikidata knows by size but without a KvK number
-            extra = collect(prop, nace, True)
-            have_qid = {r["wikidata"] for r in best.values()}
-            new = {k: v for k, v in extra.items() if v["wikidata"] not in have_qid}
-            print(f"Wikidata (wider net): {len(new):,} more Dutch companies without a KvK number on Wikidata")
-            best.update(new)
-        except Exception as e:
-            print(f"(wider Wikidata search skipped: {e})")
+        have_qid = {r["wikidata"] for r in best.values()}
+        for i, tpl in enumerate(NL_ANCHORS, 1):      # each query on its own: one failing must not stop the other
+            try:
+                extra = collect(prop, nace, True, tpl)
+                new = {k: v for k, v in extra.items() if v["wikidata"] not in have_qid}
+                have_qid |= {v["wikidata"] for v in new.values()}
+                best.update(new)
+                print(f"Wikidata (wider net, part {i}/2): {len(new):,} more Dutch companies without a KvK number on Wikidata")
+            except Exception as e:
+                print(f"(wider Wikidata search part {i}/2 skipped: {str(e)[:300]})")
     rows = list(best.values())
     write_json(OUT, rows)
     print(f"Wikidata: {len(rows):,} companies ({sum(1 for x in rows if str(x['kvk']).startswith('wd-')):,} still without a KvK number), "
