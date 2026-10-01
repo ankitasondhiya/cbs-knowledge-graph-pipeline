@@ -172,6 +172,48 @@ def main():
         by_name = sum(1 for c in out if c.get("industrySource") and c["industrySource"].startswith("wikidata") and c["industrySource"] != "wikidata NACE")
         print(f"  free mode: industry from NACE code: {sum(1 for c in out if c.get('industrySource') == 'wikidata NACE'):,}, "
               f"from industry name: {by_name:,}, none: {no_ind:,} (of {len(out):,})")
+    # Companies the sales team knows but the free sources do not list (e.g. a mid-size manufacturer with no Wikidata
+    # record). companies/extra_companies.csv: company | kvk | section A-U | staff | revenue_eur | revenue_year | city | website | note
+    # They bypass the staff / revenue filters (a person chose them). With no KVK number they get the id 'manual-<name>'.
+    extra_path = Path(__file__).resolve().parent / "extra_companies.csv"
+    if extra_path.exists() and not a.test:
+        import csv
+        from erp_catalog import slug
+        from name_match import name_key
+        have_kvk = {c["kvk"] for c in out}
+        have_name = {name_key(c["name"]) for c in out if c.get("name")}
+        added, dup = [], []
+        with open(extra_path, newline="", encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                r = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items()}
+                nm = r.get("company")
+                if not nm or nm.startswith("#"):
+                    continue
+                kvk = norm_kvk(r["kvk"]) if r.get("kvk") else "manual-" + slug(nm)
+                if kvk in have_kvk or (name_key(nm) and name_key(nm) in have_name):
+                    dup.append(nm)
+                    continue
+                sec = (r.get("section") or "").upper()
+                sec = sec if re.fullmatch(r"[A-U]", sec) else None
+                num = lambda v: float(v.replace(".", "").replace(",", ".")) if v else None
+                staff = int(num(r.get("staff"))) if r.get("staff") else None
+                rev = num(r.get("revenue_eur"))
+                band, ict_band = size_bands(staff)
+                out.append({"kvk": kvk, "name": nm, "legalName": None, "tradeNames": [], "mainSbi": sec, "mainSbiDesc": r.get("note") or None,
+                            "sbiCodes": [], "section": sec, "branchLabel": SBI2008_SECTION_LABEL.get(sec), "staff": staff,
+                            "sizeBand": band, "ictSizeBand": ict_band, "legalForm": None, "city": r.get("city") or None,
+                            "postcode": None, "street": None, "website": r.get("website") or None, "lei": None, "leiStatus": None,
+                            "parentLei": None, "parentName": None, "ultimateParentLei": None, "ultimateParentName": None,
+                            "revenue": rev, "revenueYear": r.get("revenue_year") or None,
+                            "revenueSource": "added by sales (csv)" if rev else None, "wikidata": None, "noMarketing": None,
+                            "sources": ["manual"], "industrySource": "manual (sales)" if sec else None})
+                have_kvk.add(kvk); added.append(nm)
+        print(f"extra companies: {len(added):,} added from {extra_path.name}"
+              + (f"; {len(dup):,} already in the list: {dup[:10]}" if dup else ""))
+        for nm in added:
+            c = next(x for x in out if x["name"] == nm)
+            if c["staff"] is None and c["revenue"] is None:
+                print(f"  ! {nm}: no staff and no revenue -- KPI 10 cannot size it; add one of them")
     write_json(LANDING / ("companies.test.json" if a.test else "companies.json"), out)
     print(f"{len(out):,} companies built  (skipped: {dict(skipped) or 'none'})")
     print(f"  with LEI: {sum(1 for c in out if c['lei']):,}   with parent: {sum(1 for c in out if c['parentLei']):,}"

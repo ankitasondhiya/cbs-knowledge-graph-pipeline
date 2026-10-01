@@ -130,6 +130,12 @@ Account knowledge overrides the score: **customer** -> "expand scope" with the o
 **lost** -> re-open only with a trigger. Use **Accounts -> New business only** to hide all of those. Focus filters: ERP project under way,
 legacy ERP, ERP unknown, hiring data/AI roles, in our size sweet spot. **Download CSV** exports score, reasons, next step, signals, status and owner for the CRM.
 
+### Missing a company you know? (coverage)
+The free sources only list companies with a Wikidata record + KVK number (about 5,000, mostly large / well known), so a mid-size manufacturer
+may be absent. Quick fix: add a row to `companies/extra_companies.csv` (`company, kvk (optional), section A-U, staff and/or revenue_eur, city, website`)
+-- it is added on the next *CBS companies* run, bypasses the staff/revenue filters and needs staff or revenue to be sized.
+Full fix: a **KVK selection file** of 100+ staff companies (`import_kvk_selection.py`, ~8,600 Dutch businesses) -- see "Buying KVK data" above.
+
 ### The four steps (all free)
 1. **Team knowledge** -- sales / partners fill `erp_evidence.csv` (template: `erp_evidence.template.csv`). Sales people know names, not KVK numbers, so
    a row may carry `company` instead of `kvk` (matched by name; unmatched names are listed in the log, never guessed).
