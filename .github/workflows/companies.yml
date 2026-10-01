@@ -19,11 +19,29 @@ on:
         description: "Only companies with at least this many working persons (0 = no floor)."
         required: false
         default: "100"
+      scan_websites:
+        description: "true = read each candidate company's OWN website (robots.txt respected) to find its KVK number, staff count, address and industry hints where Wikidata lacks them. Free; adds ~10-30 min."
+        required: false
+        default: true
+        type: boolean
+      website_scan_max:
+        description: "Max websites to scan per run (largest / most incomplete first)."
+        required: false
+        default: "400"
       detect_erp:
         description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
         required: false
         default: true
         type: boolean
+      use_kvk_api:
+        description: "true = ALSO look up the listed companies at KVK (official industry, staff, address). COSTS MONEY: about EUR 0.02 per company. Needs the KVK_API_KEY secret. Ignored when companies/kvk_selection.csv exists."
+        required: false
+        default: false
+        type: boolean
+      kvk_max_calls:
+        description: "Spending cap for use_kvk_api: max KVK PAID profile calls this run (start with 20). Profiles already fetched in an earlier run are restored from the workflow cache and are NOT paid for again. Never schedule this workflow."
+        required: false
+        default: "20"
       dry_run:
         description: "true = build everything and show Aura usage, but write NOTHING to Neo4j."
         required: false
@@ -45,7 +63,12 @@ jobs:
       MIN_REV_M: ${{ github.event.inputs.min_revenue_m }}
       MIN_STAFF: ${{ github.event.inputs.min_staff }}
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
+      SCAN_WEBSITES: ${{ github.event.inputs.scan_websites }}
+      WEB_MAX: ${{ github.event.inputs.website_scan_max }}
       DRY_RUN: ${{ github.event.inputs.dry_run }}
+      USE_KVK_API: ${{ github.event.inputs.use_kvk_api }}
+      KVK_MAX_CALLS: ${{ github.event.inputs.kvk_max_calls }}
+      KVK_API_KEY: ${{ secrets.KVK_API_KEY }}
       # optional: free key from developer.adzuna.com -> vacancy-based buying signals
       ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
       ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
@@ -57,15 +80,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Restore KVK profile cache (so companies already fetched are never paid for twice)
+        uses: actions/cache@v4
+        with:
+          path: landing_zone/companies/kvk_profiles.jsonl
+          key: kvk-profiles-${{ github.run_id }}
+          restore-keys: |
+            kvk-profiles-
       - run: pip install -r requirements.txt
 
-      - name: Wikidata (revenue, employees, industry) and GLEIF (LEI, parents)
+      - name: Company list - KVK selection file if you committed one, else Wikidata + GLEIF only
         run: |
-          python fetch_wikidata.py
-          python fetch_gleif.py
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
+          MINREV="$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")"
+          python fetch_wikidata.py      # exact revenue / employees for the large, well-known companies (free)
+          if [ "$SCAN_WEBSITES" != "false" ]; then
+            python website_facts.py --max "${WEB_MAX:-400}"   # KvK number / staff / address / industry hints from the companies' own sites (free)
+          fi
+          python fetch_gleif.py         # LEI + legal data for them (free)
+          SEL=""
+          [ -f kvk_selection.csv ] && SEL="kvk_selection.csv"
+          [ -z "$SEL" ] && [ -f kvk_selection.xlsx ] && SEL="kvk_selection.xlsx" && pip install openpyxl
+          if [ -n "$SEL" ]; then
+            echo "Using KVK selection file $SEL: the complete list of 100+ staff companies"
+            python import_kvk_selection.py "$SEL" --min-staff "${MIN_STAFF:-100}"
+            BUILD=""
+          elif [ "$USE_KVK_API" = "true" ] && [ -n "$KVK_API_KEY" ]; then
+            echo "Enriching the free list with KVK profiles (paid, capped at ${KVK_MAX_CALLS:-20} calls)"
+            python build_companies.py --free --min-revenue "$MINREV" --min-staff 0   # companies.json = who to look up
+            python fetch_kvk.py --from-companies --max-calls "${KVK_MAX_CALLS:-20}"
+            BUILD=""
+          else
+            echo "No kvk_selection.csv/.xlsx and no KVK API -> free sources only (a SAMPLE of large, well-known companies)"
+            BUILD="--free"
+          fi
+          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
           python fetch_gleif.py parents
-          python build_companies.py --free --min-revenue "$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")" --min-staff "${MIN_STAFF:-100}"
+          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
 
       - name: ERP evidence (your CSV, vendor reference pages, website scan)
         run: |

@@ -43,7 +43,7 @@ def find_property(search, must_contain, what, required=True):
 
 QUERY = """
 SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLabel ?nace ?cityLabel ?website WHERE {
-  ?item wdt:%(p)s ?kvk .
+  %(anchor)s
   OPTIONAL { ?item wdt:P452 ?industry . %(nace)s }
   OPTIONAL { ?item wdt:P159 ?city }
   OPTIONAL { ?item wdt:P856 ?website }   # official website -> used by erp_enrich.py --detect
@@ -53,6 +53,18 @@ SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLa
   SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
 }"""
 
+
+
+# Which items to fetch. 1) companies that list a Dutch KvK number (the original route).
+KVK_ANCHOR = "?item wdt:%(p)s ?kvk ."
+# 2) Dutch companies WITHOUT a KvK number on Wikidata: country (or headquarters country) = Netherlands, a kind of business,
+#    and either 100+ employees or a published revenue. Their KvK number is found later from the company's own website
+#    (Dutch law requires it there). No KvK number yet -> the record is keyed 'wd-<QID>'.
+NL_ANCHOR = """{ ?item wdt:P17 wd:Q55 } UNION { ?item wdt:P159 ?hq . ?hq wdt:P17 wd:Q55 }
+  ?item wdt:P31/wdt:P279* wd:Q4830453 .
+  FILTER NOT EXISTS { ?item wdt:%(p)s [] }
+  { ?item wdt:P1128 ?e0 . FILTER(?e0 >= 100) } UNION { ?item wdt:P2139 ?r0 }
+  BIND(?item AS ?kvk)"""
 
 def run_sparql(query, retries=3):
     """Public Wikidata endpoint: sometimes times out / 5xx, and labels can contain raw control characters."""
@@ -73,27 +85,23 @@ def run_sparql(query, retries=3):
 # description. Used only to work out the CBS industry for companies with no NACE code / industry on Wikidata.
 QUERY_TYPES = """
 SELECT ?item ?typeLabel ?desc WHERE {
-  ?item wdt:%(p)s ?kvk .
+  %(anchor)s
   OPTIONAL { ?item wdt:P31 ?type }
   OPTIONAL { ?item schema:description ?desc . FILTER(LANG(?desc) IN ("en", "nl")) }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
 }"""
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--kvk-property", default="P3220", help='Wikidata "KvK company ID"')
-    ap.add_argument("--nace-property", default="P4496", help='Wikidata "NACE code rev.2"')
-    a = ap.parse_args()
-    prop, nace_p = a.kvk_property, a.nace_property
-    nace = f"OPTIONAL {{ ?industry wdt:{nace_p} ?nace }}" if nace_p else ""
-    data = run_sparql(QUERY % {"p": prop, "nace": nace})
+def collect(prop, nace, nl_mode):
+    anchor = (NL_ANCHOR if nl_mode else KVK_ANCHOR) % {"p": prop}
+    data = run_sparql(QUERY % {"anchor": anchor, "nace": nace})
     best = {}
     for b in data["results"]["bindings"]:
-        kvk = norm_kvk(b["kvk"]["value"])
+        qid = b["item"]["value"].rsplit("/", 1)[-1]
+        kvk = ("wd-" + qid) if nl_mode else norm_kvk(b["kvk"]["value"])
         if not kvk:
             continue
-        rec = best.setdefault(kvk, {"kvk": kvk, "wikidata": b["item"]["value"].rsplit("/", 1)[-1],
+        rec = best.setdefault(kvk, {"kvk": kvk, "wikidata": qid, "kvkFromWebsite": nl_mode,
                                     "name": b.get("itemLabel", {}).get("value"),
                                     "revenue": None, "revenueCurrency": None, "revenueYear": None, "employees": None,
                                     "industries": [], "naceCodes": [], "city": None, "website": None,
@@ -120,7 +128,7 @@ def main():
                            revenueCurrency=b.get("unitLabel", {}).get("value"))
     try:
         by_qid = {r["wikidata"]: r for r in best.values()}
-        for b in run_sparql(QUERY_TYPES % {"p": prop})["results"]["bindings"]:
+        for b in run_sparql(QUERY_TYPES % {"anchor": anchor})["results"]["bindings"]:
             rec = by_qid.get(b["item"]["value"].rsplit("/", 1)[-1])
             if rec is None:
                 continue
@@ -134,9 +142,30 @@ def main():
         print(f"(kind/description lookup skipped: {e})")
     for rec in best.values():   # SPARQL row order varies between runs -> sort, so the industry picked is stable
         rec["naceCodes"].sort(); rec["industries"].sort(); rec["types"].sort(); rec["descriptions"].sort()
+    return best
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--kvk-property", default="P3220", help='Wikidata "KvK company ID"')
+    ap.add_argument("--nace-property", default="P4496", help='Wikidata "NACE code rev.2"')
+    ap.add_argument("--no-nl-wide", action="store_true", help="skip the wider search (Dutch companies without a KvK number)")
+    a = ap.parse_args()
+    prop, nace_p = a.kvk_property, a.nace_property
+    nace = f"OPTIONAL {{ ?industry wdt:{nace_p} ?nace }}" if nace_p else ""
+    best = collect(prop, nace, False)
+    if not a.no_nl_wide:
+        try:   # optional: Dutch companies Wikidata knows by size but without a KvK number
+            extra = collect(prop, nace, True)
+            have_qid = {r["wikidata"] for r in best.values()}
+            new = {k: v for k, v in extra.items() if v["wikidata"] not in have_qid}
+            print(f"Wikidata (wider net): {len(new):,} more Dutch companies without a KvK number on Wikidata")
+            best.update(new)
+        except Exception as e:
+            print(f"(wider Wikidata search skipped: {e})")
     rows = list(best.values())
     write_json(OUT, rows)
-    print(f"Wikidata: {len(rows):,} companies with a KVK number, "
+    print(f"Wikidata: {len(rows):,} companies ({sum(1 for x in rows if str(x['kvk']).startswith('wd-')):,} still without a KvK number), "
           f"{sum(1 for x in rows if x['revenue']):,} with revenue, "
           f"{sum(1 for x in rows if x['naceCodes']):,} with an industry (NACE) code -> {OUT}")
 
