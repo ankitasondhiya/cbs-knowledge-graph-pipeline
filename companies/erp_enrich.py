@@ -36,7 +36,7 @@ from urllib.robotparser import RobotFileParser
 
 from common import LANDING, norm_kvk, read_json, write_json
 from erp_catalog import CATALOG, canonical, lifecycle_of, mentions, slug  # noqa: F401  (slug re-exported for load_companies)
-from name_match import build_index, find_companies, fold, snippet
+from name_match import build_index, find_companies, fold, name_key, snippet
 
 OUT = LANDING / "erp.json"
 UA = "cbs-knowledge-graph-pipeline/1.0 (ERP research; contact via GitHub)"
@@ -46,24 +46,49 @@ PAGE_HINT = re.compile(r"vacatur|career|werken-?bij|jobs?\b|over-?ons|about|priv
 
 
 # ---------------------------------------------------------------- CSV evidence
-def read_csv_evidence(path):
-    out = []
+ACCOUNT_STATUS = {"customer": "customer", "klant": "customer", "prospect": "prospect", "lead": "prospect",
+                  "lost": "lost", "verloren": "lost", "partner": "partner", "competitor": "competitor",
+                  "do-not-contact": "do-not-contact", "do not contact": "do-not-contact", "dnc": "do-not-contact",
+                  "niet benaderen": "do-not-contact"}
+
+
+def read_csv_evidence(path, companies=None):
+    """Team knowledge -> (erp_records, accounts, unmatched_names).
+
+    Sales people know company NAMES, not KVK numbers, so a row may carry either `kvk` or `company`
+    (matched to the company list by name; unmatched names are reported, never guessed).
+    A row may hold an ERP fact, an account status/owner (customer, prospect, lost, partner, competitor,
+    do-not-contact), or both:  kvk | company | erp | confidence | source | evidence_url | note | account_status | owner
+    """
+    index = build_index(companies or [])
+    out, accounts, unmatched = [], {}, []
     with open(path, newline="", encoding="utf-8-sig") as f:
         sample = f.read(4096)
         f.seek(0)
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t") if sample else csv.excel
         for row in csv.DictReader(f, dialect=dialect):
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-            kvk, erp = norm_kvk(row.get("kvk")), row.get("erp")
-            if not kvk or not erp:
+            kvk = norm_kvk(row.get("kvk")) if row.get("kvk") else None
+            if not kvk and row.get("company"):
+                key = name_key(row["company"])
+                kvk = index.get(key) if key else None
+                if not kvk:
+                    unmatched.append(row["company"])
+                    continue
+            erp = row.get("erp")
+            status = ACCOUNT_STATUS.get((row.get("account_status") or "").lower())
+            if not kvk or not (erp or status or row.get("owner")):
                 continue
-            conf = (row.get("confidence") or "high").lower()
-            name, vendor, life = canonical(erp)
-            out.append({"kvk": kvk, "erp": name, "vendor": vendor, "lifecycle": life,
-                        "confidence": conf if conf in RANK else "high",
-                        "source": row.get("source") or "csv (manual)",
-                        "evidence": row.get("note") or None, "evidenceUrl": row.get("evidence_url") or None})
-    return out
+            if status or row.get("owner"):
+                accounts[kvk] = {"status": status, "owner": row.get("owner") or None, "note": row.get("note") or None}
+            if erp:
+                conf = (row.get("confidence") or "high").lower()
+                name, vendor, life = canonical(erp)
+                out.append({"kvk": kvk, "erp": name, "vendor": vendor, "lifecycle": life,
+                            "confidence": conf if conf in RANK else "high",
+                            "source": row.get("source") or "our own knowledge (csv)",
+                            "evidence": row.get("note") or None, "evidenceUrl": row.get("evidence_url") or None})
+    return out, accounts, unmatched
 
 
 # ----------------------------------------------------------- website detection
@@ -235,10 +260,18 @@ def main():
             merged[k] = rec
 
     if a.csv:
-        rows = read_csv_evidence(a.csv)
+        rows, accounts, unmatched = read_csv_evidence(a.csv, read_json(a.companies, []))
         for r in rows:
             add(r)
-        print(f"CSV: {len(rows):,} ERP facts read from {a.csv}")
+        if accounts:
+            acc_path = LANDING / "accounts.json"
+            allacc = read_json(acc_path, {})
+            allacc.update(accounts)
+            write_json(acc_path, allacc)
+        print(f"CSV: {len(rows):,} ERP facts and {len(accounts):,} account statuses read from {a.csv}")
+        if unmatched:
+            print(f"  {len(unmatched):,} company names could not be matched to a company in the list "
+                  f"(add the KVK number to the row, or the company is not in the list): {unmatched[:15]}")
 
     if a.references:
         import requests

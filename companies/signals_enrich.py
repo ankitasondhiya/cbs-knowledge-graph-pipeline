@@ -6,6 +6,8 @@ A vacancy is the most honest public statement of what a company runs and what it
   * "Finance controller, ervaring met AFAS"       -> erp_role   : they run AFAS (evidence for the ERP column)
 Each signal keeps the vacancy title, date and link, so a seller can open it before calling.
 
+  * "Data engineer / AI / automation role"        -> ai_data    : they invest in data & AI -- the other thing we sell
+
 Two ways in (both optional, both keep only vacancies from companies that are in your companies.json):
 
   --jobs-csv FILE   Any vacancy export: company, title, [text], [url], [date], [kvk]
@@ -41,11 +43,16 @@ AGENCY = re.compile(r"randstad|tempo.?team|adecco|manpower|hays\b|brunel|yacht|m
 
 CHANGE = re.compile(r"migrat|implement|selectie|selection|vervang|replace|transform|upgrade|go[- ]?live|roll[- ]?out|"
                     r"conversie|conversion|nieuw(?:e)? erp|erp[- ]programma|erp[- ]project|s/?4 ?hana (?:transit|migrat)", re.I)
+# Hiring for data / AI / automation roles = the company is investing in exactly what our AI/data services support.
+AI_DATA = re.compile(r"data[- ]?engineer|data[- ]?scientist|data[- ]?analyst|data platform|data governance|business intelligence|"
+                     r"machine learning|\bai\b|kunstmatige intelligentie|\brpa\b|process automation|procesautomatisering|"
+                     r"automation engineer|power bi|snowflake|databricks", re.I)
 GENERIC_ERP = re.compile(r"\berp\b|enterprise resource planning|bedrijfssoftware|financieel systeem", re.I)
 
 ADZUNA_QUERIES = ["ERP implementatie", "ERP migratie", "ERP selectie", "S/4HANA", "SAP ECC", "Dynamics 365 Business Central",
                   "Dynamics NAV", "AFAS", "Exact Online", "Exact Globe", "NetSuite", "Unit4", "Infor LN", "Baan",
-                  "Oracle Fusion", "ERP key user", "functioneel beheerder ERP", "application manager ERP"]
+                  "Oracle Fusion", "ERP key user", "functioneel beheerder ERP", "application manager ERP",
+                  "data engineer", "data platform", "machine learning engineer", "process automation", "RPA developer"]
 
 
 def classify(title, text):
@@ -54,6 +61,8 @@ def classify(title, text):
     named = [(n, k, ev) for n, k, _f, ev in mentions(blob)]
     generic = bool(GENERIC_ERP.search(blob))
     if not named and not generic:
+        if AI_DATA.search(title):      # no ERP mention, but a data / AI / automation role
+            return {"type": "ai_data", "erps": [], "in_title": [], "evidence": "data / AI / automation role"}
         return None
     change = bool(CHANGE.search(blob)) and (generic or bool(named))
     return {"type": "erp_change" if change else "erp_role", "erps": [n for n, _k, _e in named],
@@ -81,7 +90,8 @@ def process_vacancies(vacancies, companies):
         if not kvk or not c or (kvk, v.get("url") or v.get("title")) in seen:
             continue
         seen.add((kvk, v.get("url") or v.get("title")))
-        label = "ERP project / migration being staffed" if c["type"] == "erp_change" else "ERP-related role"
+        label = {"erp_change": "ERP project / migration being staffed", "ai_data": "hiring for a data / AI / automation role"
+                 }.get(c["type"], "ERP-related role")
         # "SAP ECC -> S/4HANA migration": the legacy system is what they run today, the other is the TARGET
         legacy = [n for n in c["erps"] if lifecycle_of(n) == "legacy"]
         migrating_from_legacy = c["type"] == "erp_change" and bool(legacy)

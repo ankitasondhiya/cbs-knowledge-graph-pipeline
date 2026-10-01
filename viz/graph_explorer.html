@@ -328,16 +328,18 @@
         (staff &times; the industry's revenue per person working, CBS 81156NED). ERP comes from evidence collected by
         <code>companies/erp_enrich.py</code> (your own facts = high, website fingerprint = medium, text mention = low);
         where nothing is known the row says so and shows CBS's share of businesses in that industry that use ERP.
-        The <b>opportunity score</b> (0-100) is a transparent sales heuristic, not a prediction: size of the account (max 25) +
-        the industry's ERP gap from CBS (15) + ERP status: legacy / unknown / modern (30) + buying signal from job vacancies (30).
-        Every point is explained in the "Why now" column.
+        The <b>opportunity score</b> (0-100) is a transparent sales heuristic, not a prediction, built for what we sell (<b>ERP implementation / migration</b> and <b>AI / data / automation</b>):
+        fit with our size sweet spot (25) + the industry's ERP gap (10) + the industry's AI gap, CBS KPI 3 (10) + what ERP they run: legacy / unknown / modern (30) +
+        buying signal from job vacancies: ERP project, ERP role, data/AI role (25). Every point is explained in the "Why now" column.
       </div>
       <div class="tp-controls">
         <label>Industry <select id="tpIndustry"><option value="">All industries</option></select></label>
-        <label>Min revenue (&euro; m) <input id="tpMinRev" type="number" min="0" step="1" value="10"></label>
+        <label>Min revenue (&euro; m) <input id="tpMinRev" type="number" min="0" step="1" value="50"></label>
+        <label title="Our target size: full size points inside this range">Sweet spot (&euro; m) <span style="display:flex;gap:4px"><input id="tpSweetMin" type="number" min="0" step="10" value="50" style="width:70px"><input id="tpSweetMax" type="number" min="0" step="50" value="500" style="width:70px"></span></label>
         <label>Min staff <input id="tpMinStaff" type="number" min="0" step="10" value="100"></label>
         <label>ERP <select id="tpErp"><option value="">Any</option><option value="__known">ERP known</option><option value="__unknown">ERP unknown</option></select></label>
-        <label>Focus <select id="tpFocus"><option value="">All accounts</option><option value="change">ERP project / migration under way</option><option value="legacy">Legacy ERP (migration candidates)</option><option value="unknown">ERP unknown (qualify)</option></select></label>
+        <label>Focus <select id="tpFocus"><option value="">All accounts</option><option value="change">ERP project / migration under way</option><option value="legacy">Legacy ERP (migration candidates)</option><option value="unknown">ERP unknown (qualify)</option><option value="ai">Hiring data / AI roles</option><option value="sweet">In our size sweet spot</option></select></label>
+        <label>Accounts <select id="tpAcct"><option value="">All</option><option value="new">New business only (hide customers, partners, competitors, do-not-contact)</option></select></label>
         <label>Sort <select id="tpSort"><option value="score">Opportunity score</option><option value="rev">Revenue, high to low</option><option value="ind">Industry, then revenue</option></select></label>
         <label class="tp-check"><input id="tpExact" type="checkbox"> exact revenue only</label>
         <button id="tpRun">Run</button>
@@ -2295,7 +2297,7 @@ async function renderCompanyList(kpi, branchLabel, td) {
 // One query pulls every loaded company with its CBS industry and its ERP
 // evidence; revenue estimates (staff x industry revenue per worker) and all
 // filters are applied here so exact and estimated revenue rank together.
-const TP = { rows: [], rpw: {}, erpPct: {} };
+const TP = { rows: [], rpw: {}, erpPct: {}, aiPct: {} };
 const TP_RANK = { high: 3, medium: 2, low: 1 };
 
 function tpErpHtml(erps, pctUsing) {
@@ -2331,7 +2333,7 @@ async function tpRun() {
   try {
     const n = v => (v && typeof v === 'object' && typeof v.low === 'number') ? v.toNumber() : v;
     // Industry context from KPI 2's own query: % using ERP + revenue per worker (CBS 86119NED / 81156NED). Optional.
-    TP.rpw = {}; TP.erpPct = {};
+    TP.rpw = {}; TP.erpPct = {}; TP.aiPct = {};
     try {
       const k2 = KPI_DEFINITIONS.find(k => k.n === 2);
       const ind = await runQuery(k2.cypher, {});
@@ -2342,6 +2344,11 @@ async function tpRun() {
         TP.rpw[l] = revenuePerWorker(rev == null ? null : Number(rev), w == null ? null : Number(w));
       });
     } catch (e) { console.warn('industry context skipped', e); }
+    try {   // KPI 3: % of the industry already using AI -> the AI gap (greenfield for our AI / data services)
+      const k3 = KPI_DEFINITIONS.find(k => k.n === 3);
+      const ai = await runQuery(k3.cypher, {});
+      (ai ? ai.records : []).forEach(r => { const v = r.get('value'); TP.aiPct[r.get('label')] = v == null ? null : Number(n(v)); });
+    } catch (e) { console.warn('AI context skipped', e); }
 
     const res = await runQuery(`
       MATCH (c:Company) WHERE c.parentOnly IS NULL
@@ -2350,7 +2357,8 @@ async function tpRun() {
       WITH c, b, collect(CASE WHEN e IS NULL THEN NULL ELSE
              {name: e.name, vendor: e.vendor, confidence: u.confidence, source: u.source, evidence: u.evidence, url: u.evidenceUrl, lifecycle: coalesce(u.lifecycle, e.lifecycle)} END) AS erps
       RETURN c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource, .website, .parentName,
-                .ultimateParentName, .mainSbiDesc, .testData, .noMarketing, .signals, .signalCount, .erpChangeSignal} AS c,
+                .ultimateParentName, .mainSbiDesc, .testData, .noMarketing, .signals, .signalCount, .erpChangeSignal,
+                .accountStatus, .accountOwner, .accountNote} AS c,
              b.prefLabelNl AS branch, erps
       ORDER BY coalesce(c.revenue, 0) DESC, coalesce(c.staff, 0) DESC
       LIMIT 20000`, {});
@@ -2384,15 +2392,30 @@ async function tpRun() {
 }
 
 // Transparent sales heuristic (0-100). Every component is returned as a readable reason.
+function tpSweet() {
+  const lo = (Number(document.getElementById('tpSweetMin').value) || 50) * 1e6;
+  const hi = (Number(document.getElementById('tpSweetMax').value) || 500) * 1e6;
+  return { lo, hi: Math.max(hi, lo) };
+}
+// Transparent sales heuristic (0-100), tuned for what we sell: ERP implementation / migration + AI / data / automation.
+// size 25 + ERP gap 10 + AI gap 10 + ERP status 30 + buying signal 25. Every component is returned as a readable reason.
 function tpScore(r) {
   let score = 0; const why = [];
+  const { lo, hi } = tpSweet();
   const rev = r.est || 0;
-  const size = rev >= 250e6 ? 25 : rev >= 50e6 ? 20 : rev >= 25e6 ? 15 : rev >= 10e6 ? 10 : 5;
-  score += size; why.push(`size ${fmtEuro(rev)}${r.isEst ? ' (est.)' : ''}: +${size}`);
+  const multinational = (r.staff || 0) >= 50000 || rev > 4 * hi;
+  const size = multinational ? 6 : (rev >= lo && rev <= hi) ? 25 : rev > hi ? 15 : rev >= lo / 2 ? 15 : 8;
+  r.sweet = !multinational && rev >= lo && rev <= hi;
+  score += size;
+  why.push(`size ${fmtEuro(rev)}${r.isEst ? ' (est.)' : ''}${multinational ? ' -- very large group, rarely a mid-market buyer' : r.sweet ? ' -- in our sweet spot' : ''}: +${size}`);
   const pu = r.branch ? TP.erpPct[r.branch] : null;
   const gap = pu == null ? null : Math.max(0, 100 - pu);
-  const g = gap == null ? 5 : Math.round(15 * Math.min(gap, 50) / 50);
-  score += g; why.push(gap == null ? 'industry ERP gap unknown: +5' : `${Math.round(gap)}% of industry has no ERP: +${g}`);
+  const g = gap == null ? 4 : Math.round(10 * Math.min(gap, 50) / 50);
+  score += g; why.push(gap == null ? 'industry ERP gap unknown: +4' : `${Math.round(gap)}% of industry has no ERP: +${g}`);
+  const pa = r.branch ? TP.aiPct[r.branch] : null;
+  const agap = pa == null ? null : Math.max(0, 100 - pa);
+  const ag = agap == null ? 4 : Math.round(10 * Math.min(agap, 90) / 90);
+  score += ag; why.push(agap == null ? 'industry AI use unknown: +4' : `only ${Math.round(pa)}% of industry uses AI: +${ag}`);
   const erps = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
   // a legacy flag only counts as a migration lead with at least MEDIUM evidence; a weak (low) one is a "verify" hint
   const legacy = erps.find(e => e.lifecycle === 'legacy' && (TP_RANK[e.confidence] || 0) >= 2);
@@ -2400,22 +2423,36 @@ function tpScore(r) {
   let status, next;
   if (legacy) {
     score += 30; why.push(`runs legacy ${legacy.name} (${legacy.confidence} evidence): +30`); status = 'legacy';
-    next = `Legacy ERP (${legacy.name}): open a modernisation / migration conversation.`;
+    next = `Legacy ERP (${legacy.name}): open an ERP modernisation / migration conversation.`;
   } else if (weakLegacy) {
     score += 8; why.push(`weak signal of legacy ${weakLegacy.name} (low evidence -- verify): +8`); status = 'unknown';
     next = `Possibly on ${weakLegacy.name} (weak evidence): verify before treating as a migration lead.`;
   } else if (!erps.length) {
     score += 12; why.push('ERP unknown: +12'); status = 'unknown';
-    next = 'ERP unknown: qualify first -- ask what runs finance and operations today.';
+    next = 'ERP unknown: discovery call -- which ERP and data landscape do they run? Qualify for ERP and AI / data services.';
   } else {
-    const cur = erps[0]; const pts = cur.lifecycle === 'unknown' ? 10 : 5;
+    const cur = erps[0]; const pts = cur.lifecycle === 'unknown' ? 12 : 10;
     score += pts; why.push(`runs ${cur.name} (${cur.confidence} evidence): +${pts}`); status = 'current';
-    next = `Runs ${cur.name}: position add-ons, integration, data/AI -- not replacement.`;
+    next = `Runs ${cur.name}: pitch AI / data / automation on top of it -- not a replacement.`;
   }
-  const chg = r.sig.find(x => x.type === 'erp_change'), role = r.sig.find(x => x.type === 'erp_role');
-  if (chg) { score += 30; why.push(`ERP project / migration being staffed ("${chg.title}"): +30`); next = 'ERP project under way: get in front of the selection / implementation team now. ' + next; }
-  else if (role) { score += 10; why.push(`hiring for an ERP-related role: +10`); }
-  return { score: Math.min(100, score), why, next, status, hasChange: !!chg };
+  const chg = r.sig.find(x => x.type === 'erp_change'), role = r.sig.find(x => x.type === 'erp_role'), aid = r.sig.find(x => x.type === 'ai_data');
+  if (chg) { score += 25; why.push(`ERP project / migration being staffed ("${chg.title}"): +25`); next = 'ERP project under way: get in front of the selection / implementation team now. ' + next; }
+  else {
+    const pts = (role ? 8 : 0) + (aid ? 6 : 0);
+    if (role) why.push('hiring for an ERP-related role: +8');
+    if (aid) { why.push(`hiring for a data / AI / automation role ("${aid.title}"): +6`); next = 'Hiring data / AI roles: open an AI / data services conversation. ' + next; }
+    score += pts;
+  }
+  // account knowledge (from the team's own file): never pitch customers, partners, competitors or do-not-contact
+  const st = r.accountStatus;
+  if (st === 'do-not-contact' || st === 'partner' || st === 'competitor') {
+    score = 0; why.push(`account status "${st}": not a target (score 0)`); next = `Account status "${st}": do not pitch.`;
+  } else if (st === 'customer') {
+    next = 'Existing customer: expand scope (AI / data / automation) with the account owner. ';
+  } else if (st === 'lost') {
+    next = 'Lost earlier: re-open only with a trigger (see signals). ' + next;
+  }
+  return { score: Math.min(100, score), why, next, status, hasChange: !!chg, hasAi: !!aid };
 }
 
 function tpFiltered() {
@@ -2425,7 +2462,10 @@ function tpFiltered() {
   const erp = document.getElementById('tpErp').value;
   const exactOnly = document.getElementById('tpExact').checked;
   const focus = document.getElementById('tpFocus').value;
-  let rows = TP.rows.filter(r => r.est != null && (!focus || (focus === 'change' ? r.hasChange : r.status === focus)) && r.est >= minRev && (r.staff == null || r.staff >= minStaff)
+  const acct = document.getElementById('tpAcct').value;
+  if (TP.rows.length) TP.rows.forEach(r => Object.assign(r, tpScore(r)));   // sweet spot / profile may have changed
+  let rows = TP.rows.filter(r => r.est != null && (!focus || (focus === 'change' ? r.hasChange : focus === 'ai' ? r.hasAi : focus === 'sweet' ? r.sweet : r.status === focus))
+    && (acct !== 'new' || !['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) && r.est >= minRev && (r.staff == null || r.staff >= minStaff)
     && !(exactOnly && r.isEst)
     && (!letter || (r.branch || '').startsWith(letter + ' '))
     && (erp === '' || (erp === '__known' ? r.erps.length : erp === '__unknown' ? !r.erps.length : r.erps.some(e => e.name === erp))));
@@ -2455,6 +2495,8 @@ function tpRender() {
     [`${exact.toLocaleString()} / ${rows.length.toLocaleString()}`, 'exact revenue'],
     [rows.filter(r => r.status === 'legacy').length.toLocaleString(), 'on a legacy ERP'],
     [rows.filter(r => r.hasChange).length.toLocaleString(), 'ERP project signal'],
+    [rows.filter(r => r.hasAi).length.toLocaleString(), 'hiring data / AI'],
+    [rows.filter(r => r.sweet).length.toLocaleString(), 'in size sweet spot'],
   ].map(([b, l]) => `<div class="tp-stat"><b>${escapeHtml(b)}</b><span>${escapeHtml(l)}</span></div>`).join('');
   document.getElementById('tpCsv').disabled = !rows.length;
   if (!rows.length) { table.innerHTML = ''; table.style.display = 'none'; status.textContent += ' Nothing matches these filters.'; return; }
@@ -2463,13 +2505,14 @@ function tpRender() {
     const meta = [r.city, r.kvk ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
     const group = r.ultimateParentName || r.parentName;
     const t = translateLabel(r.branch || '');
-    const nmi = r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '';
+    const nmi = (r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '')
+      + (r.accountStatus ? `<div class="tp-sub"><b>${escapeHtml(r.accountStatus)}</b>${r.accountOwner ? ' · owner ' + escapeHtml(r.accountOwner) : ''}${r.accountNote ? ' · ' + escapeHtml(r.accountNote) : ''}</div>` : '');
     const col = r.score >= 70 ? '#c62828' : r.score >= 50 ? '#ef8f00' : '#78909c';
     const sigHtml = r.sig.slice(0, 2).map(x => `<div class="tp-sub">${x.type === 'erp_change' ? '&#9889; ' : ''}${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title || 'vacancy')}</a>` : escapeHtml(x.title || 'vacancy')}${x.date ? ' · ' + escapeHtml(x.date) : ''}</div>`).join('');
     return `<tr><td><span class="tp-score" style="background:${col}">${r.score}</span></td><td>${escapeHtml(r.branch ? t.en : '(no industry)')}${t.letter ? `<div class="tp-sub">${escapeHtml(r.branch)}</div>` : ''}</td>`
       + `<td><b>${escapeHtml(r.name || '--')}</b><div class="tp-sub">${escapeHtml(meta)}</div>`
       + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '') + nmi + `</td>`
-      + `<td class="num">${r.staff != null ? r.staff.toLocaleString() : '--'}</td>`
+      + `<td class="num">${r.staff != null ? r.staff.toLocaleString('nl-NL') : '--'}</td>`
       + `<td class="num">${r.isEst ? '~' : ''}${escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.isEst ? 'estimate'
           : escapeHtml([r.revenueYear, r.revenueSource].filter(Boolean).join(', ') || 'published')}</div></td>`
       + `<td>${tpErpHtml(r.erps, r.branch ? TP.erpPct[r.branch] : null)}</td>`
@@ -2483,12 +2526,12 @@ function tpRender() {
 
 function tpCsv() {
   const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const head = ['score', 'industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_lifecycle', 'erp_source', 'why_now', 'next_step', 'signals', 'website'];
+  const head = ['score', 'industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_lifecycle', 'erp_source', 'why_now', 'next_step', 'signals', 'account_status', 'owner', 'website'];
   const lines = tpFiltered().map(r => {
     const top = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
     return [r.score, r.branch, r.name, r.kvk, r.city, r.staff, Math.round(r.est), r.isEst ? 'estimate' : 'published',
       top.map(e => e.name).join('; '), top.map(e => e.confidence).join('; '), top.map(e => e.lifecycle || '').join('; '), top.map(e => e.source).join('; '),
-      r.why.join(' | '), r.next, r.sig.map(x => `${x.title} (${x.url || ''})`).join('; '), r.website].map(q).join(',');
+      r.why.join(' | '), r.next, r.sig.map(x => `${x.title} (${x.url || ''})`).join('; '), r.accountStatus || '', r.accountOwner || '', r.website].map(q).join(',');
   });
   const blob = new Blob(['﻿' + head.join(',') + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -2496,9 +2539,16 @@ function tpCsv() {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
+try {
+  const sw = JSON.parse(localStorage.getItem('cbsKgSweet') || 'null');
+  if (sw) { document.getElementById('tpSweetMin').value = sw.lo; document.getElementById('tpSweetMax').value = sw.hi; }
+} catch (e) { /* storage unavailable */ }
+['tpSweetMin', 'tpSweetMax'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+  try { localStorage.setItem('cbsKgSweet', JSON.stringify({ lo: document.getElementById('tpSweetMin').value, hi: document.getElementById('tpSweetMax').value })); } catch (e) { /* not fatal */ }
+}));
 document.getElementById('tpRun').onclick = tpRun;
 document.getElementById('tpCsv').onclick = tpCsv;
-['tpIndustry', 'tpMinRev', 'tpMinStaff', 'tpErp', 'tpFocus', 'tpSort', 'tpExact'].forEach(id =>
+['tpIndustry', 'tpMinRev', 'tpMinStaff', 'tpSweetMin', 'tpSweetMax', 'tpAcct', 'tpErp', 'tpFocus', 'tpSort', 'tpExact'].forEach(id =>
   document.getElementById(id).addEventListener('change', () => { if (TP.rows.length) tpRender(); }));
 tpLoadIndustryOptions();
 
@@ -2756,7 +2806,7 @@ Nodes (every node also carries :Entity and a uri property):
 - (:DimensionValue:OtherDimension) = any extra breakdown (sex, age, type of self-employed, ...). dimensionKey = CBS column name, prefLabelNl = member. Total members start with 'Totaal'.
 - (:DimensionValue:RegioCategory), (:DimensionValue:Country), (:DimensionValue:ServiceCategory), (:DimensionValue:TradeDirection).
 - (:Dataset) label = CBS table title.
-- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP use per company is known ONLY where (:Company)-[:USES_ERP {confidence: 'high'|'medium'|'low', source, evidence}]->(:ERPSystem {name, vendor}) exists -- never claim an ERP without that link, and say the confidence; otherwise use the industry % from 86119NED as a likelihood. Legacy ERP = USES_ERP.lifecycle = 'legacy' (migration candidate). Buying signals from job vacancies are on (:Company).signals (strings 'type|erp|title|url|date'), signalCount and erpChangeSignal (true = an ERP project/migration is being staffed). AI use per company is NOT known. TARGET COMPANIES = revenue above 10 million euro (c.staff >= 100 as a floor). Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 10 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
+- (:Company) = a real business from KVK/GLEIF (only if the companies/ pipeline was run). Properties: name, kvk, city, staff, sizeBand, mainSbi, mainSbiDesc, section, revenue (EUR, only for large companies, revenueSource says where from), revenueYear, lei, parentName, ultimateParentName, website. (:Company)-[:IN_BRANCH]->(:Branch), -[:LOCATED_IN]->(:Gemeente), -[:SUBSIDIARY_OF]->(:Company). ERP use per company is known ONLY where (:Company)-[:USES_ERP {confidence: 'high'|'medium'|'low', source, evidence}]->(:ERPSystem {name, vendor}) exists -- never claim an ERP without that link, and say the confidence; otherwise use the industry % from 86119NED as a likelihood. Legacy ERP = USES_ERP.lifecycle = 'legacy' (migration candidate). Buying signals from job vacancies are on (:Company).signals (strings 'type|erp|title|url|date'), signalCount and erpChangeSignal (true = an ERP project/migration is being staffed). Account knowledge from the sales team is on (:Company).accountStatus ('customer'|'prospect'|'lost'|'partner'|'competitor'|'do-not-contact'), accountOwner and accountNote -- never recommend pitching customers, partners, competitors or do-not-contact accounts. Vacancy signals also include type 'ai_data' (hiring data/AI/automation roles). We sell ERP implementation/migration and AI/data/automation services; the size sweet spot is revenue 50-500 million euro. AI use per company is NOT known. TARGET COMPANIES = revenue above 10 million euro (c.staff >= 100 as a floor). Never list companies with c.noMarketing = true as campaign targets (KVK marketing opt-out). Revenue above 10 million euro: use c.revenue when present, otherwise estimate c.staff x the industry's revenue per person working (81156NED: 1000 * Netto Omzet / Werkzame Personen); say which figures are estimates.
 Relationships (all start at an Observation): HAS_VARIABLE->Concept, HAS_BRANCH->Branch, ABOUT_REGION->Region, HAS_DIMENSION->OtherDimension, IN_DATASET->Dataset, HAS_REGIO_CATEGORY, HAS_COUNTRY, HAS_SERVICE_CATEGORY, HAS_TRADE_DIRECTION. Region hierarchy: (:Region)-[:PART_OF]->(:Region).
 
 TABLES LOADED (sourceTable -> content)
