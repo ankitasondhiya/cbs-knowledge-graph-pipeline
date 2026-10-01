@@ -213,9 +213,17 @@ def main():
                     continue
                 sec = (r.get("section") or "").upper()
                 sec = sec if re.fullmatch(r"[A-U]", sec) else None
-                num = lambda v: float(v.replace(".", "").replace(",", ".")) if v else None
-                staff = int(num(r.get("staff"))) if r.get("staff") else None
-                rev = num(r.get("revenue_eur"))
+                def num(v, what):
+                    """'650' / '1.250' / '140000000' -> number; anything else (e.g. the placeholder '<staff>') -> warning, ignored."""
+                    if not v:
+                        return None
+                    try:
+                        return float(v.replace(".", "").replace(",", "."))
+                    except ValueError:
+                        print(f"  ! extra_companies.csv: {nm}: {what} value '{v}' is not a number -- ignored (replace it with a real number)")
+                        return None
+                staff = int(num(r.get("staff"), "staff")) if num(r.get("staff"), "staff") is not None else None
+                rev = num(r.get("revenue_eur"), "revenue_eur")
                 band, ict_band = size_bands(staff)
                 out.append({"kvk": kvk, "name": nm, "legalName": None, "tradeNames": [], "mainSbi": sec, "mainSbiDesc": r.get("note") or None,
                             "sbiCodes": [], "section": sec, "branchLabel": SBI2008_SECTION_LABEL.get(sec), "staff": staff,
