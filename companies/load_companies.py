@@ -35,7 +35,7 @@ BASE = "https://data.cbs-knowledge-graph.example/id/"
 FREE_NODES, FREE_RELS, SAFETY = 200_000, 400_000, 0.90
 BATCH = 500
 
-PROPS = ["kvk", "kvkSource", "listSources", "name", "legalName", "tradeNames", "mainSbi", "mainSbiDesc", "sbiCodes", "section", "staff",
+PROPS = ["kvk", "kvkSource", "sizeUnknown", "listSources", "name", "legalName", "tradeNames", "mainSbi", "mainSbiDesc", "sbiCodes", "section", "staff",
          "sizeBand", "ictSizeBand", "legalForm", "city", "postcode", "street", "website", "lei", "leiStatus",
          "parentName", "ultimateParentName", "revenue", "revenueYear", "revenueSource", "wikidata", "sources",
          "industrySource", "noMarketing"]

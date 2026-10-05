@@ -51,6 +51,7 @@ SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLa
   OPTIONAL { ?item p:P2139 ?rs . ?rs psv:P2139 ?rv . ?rv wikibase:quantityAmount ?revenue ; wikibase:quantityUnit ?unit .
              OPTIONAL { ?rs pq:P585 ?revDate } }
   OPTIONAL { ?item wdt:P1128 ?employees }
+  FILTER NOT EXISTS { ?item wdt:P576 [] }      # dissolved / defunct companies are no sales targets
   SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
 }"""
 

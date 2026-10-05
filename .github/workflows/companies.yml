@@ -41,7 +41,7 @@ on:
       website_scan_max:
         description: "Max websites to scan per run (largest / most incomplete first)."
         required: false
-        default: "400"
+        default: "1500"
       detect_erp:
         description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
         required: false
