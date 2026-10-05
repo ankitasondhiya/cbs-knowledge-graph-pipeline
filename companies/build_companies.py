@@ -43,6 +43,8 @@ def main():
     ap.add_argument("--max-revenue", type=float, default=FOCUS["max"],
                     help="upper cap: drop companies whose PUBLISHED revenue is above this (default from focus_industries.json, EUR 1.3bn). "
                          "NOTE: Wikidata revenue is often the GLOBAL group figure, so a Dutch subsidiary of a large group is dropped too. 0 = no cap.")
+    ap.add_argument("--no-unsized", action="store_true",
+                    help="drop companies whose size (staff and revenue) is unknown, even when a focus-industry source named them")
     a = ap.parse_args()
 
     gleif = {r["kvk"]: r for r in read_jsonl(LANDING / "gleif_nl.jsonl") if r.get("kvk")}
@@ -120,7 +122,10 @@ def main():
         if w_rev is None:
             w_rev = (facts.get(p["kvk"]) or {}).get("revenue")
         unknown_ok = a.free and staff is None and w_rev is not None and w_rev >= (a.min_revenue or 0)
-        if a.min_staff and not unknown_ok and (staff is None or staff < a.min_staff):
+        # Discovery from Wikipedia categories / journal lists: keep a company of unknown size when it was NAMED for one of our focus
+        # industries (checked once the industry is known, below); the website scan / team files may still size it. Flagged sizeUnknown.
+        unsized_focus = bool(a.free and staff is None and w_rev is None and _w.get("listSources") and not a.no_unsized)
+        if a.min_staff and not unknown_ok and not unsized_focus and (staff is None or staff < a.min_staff):
             skipped[f"fewer than {a.min_staff} staff (or unknown)"] += 1
             continue
         ms = (p.get("mainSbi") or "").strip()
@@ -128,6 +133,9 @@ def main():
         ov = overrides.get(p.get("wikidata") or "") or overrides.get(p["kvk"])
         if ov:
             section = ov
+        if unsized_focus and section not in FOCUS["sections"]:
+            skipped["unknown size and not in a focus industry"] += 1
+            continue
         band, ict_band = size_bands(staff)
         g = gleif.get(p.get("kvkReal") or p["kvk"], {})
         w = wiki.get(p["kvk"], {})
@@ -152,6 +160,7 @@ def main():
             "kvk": p.get("kvkReal") or p["kvk"],
             "uriKey": p["kvk"] if str(p["kvk"]).startswith(("wd-", "list-")) else None,     # stable node id even after the KvK number is found
             "kvkSource": "company website" if p.get("kvkReal") else None,
+            "sizeUnknown": True if unsized_focus else None,      # named for a focus industry, no staff / revenue found yet
             "name": name,
             "legalName": g.get("name"),
             "tradeNames": p.get("tradeNames", []),
