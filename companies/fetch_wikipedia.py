@@ -20,22 +20,45 @@ import requests
 from common import LANDING, load_focus, section_from_industry_names, write_json
 
 API = "https://nl.wikipedia.org/w/api.php"
-UA = {"User-Agent": "cbs-knowledge-graph-pipeline/1.0 (company discovery; contact via GitHub)"}
+UA = {"User-Agent": "cbs-knowledge-graph-pipeline/1.1 (https://github.com/ankitasondhiya/cbs-knowledge-graph-pipeline; "
+                    "ankitasondhiya04@gmail.com) python-requests"}
+PACE = 1.0          # seconds between requests: Wikipedia answers 429 when hit faster than ~1-5 requests/second
+_last = [0.0]
 OUT = LANDING / "wikipedia_candidates.json"
 
 
-def api(params, session=None, retries=3):
+def api(params, session=None, retries=6):
     s = session or requests
     for attempt in range(retries):
+        wait = PACE - (time.time() - _last[0])
+        if wait > 0:
+            time.sleep(wait)
+        _last[0] = time.time()
         try:
-            r = s.get(API, params={**params, "format": "json", "formatversion": "2"}, headers=UA, timeout=60)
+            r = s.get(API, params={**params, "format": "json", "formatversion": "2", "maxlag": "5"}, headers=UA, timeout=60)
+            if r.status_code in (429, 503):
+                try:
+                    delay = float(r.headers.get("Retry-After", ""))
+                except ValueError:
+                    delay = 0
+                delay = max(delay, min(120, 10 * 2 ** attempt))
+                if attempt == retries - 1:
+                    r.raise_for_status()
+                print(f"  (Wikipedia {r.status_code}: waiting {delay:.0f}s, attempt {attempt + 1}/{retries})", flush=True)
+                time.sleep(delay)
+                continue
             r.raise_for_status()
-            return r.json()
+            d = r.json()
+            if isinstance(d, dict) and d.get("error", {}).get("code") == "maxlag":      # servers busy: back off
+                time.sleep(10)
+                continue
+            return d
         except (requests.RequestException, ValueError) as e:
             if attempt == retries - 1:
                 raise
             print(f"  (Wikipedia attempt {attempt + 1} failed: {e}; retrying)", flush=True)
             time.sleep(5 * (attempt + 1))
+    raise requests.RequestException("Wikipedia kept answering 'busy'")
 
 
 def members(category, session=None):
@@ -64,14 +87,20 @@ def qids_for(titles, session=None):
             q = (p.get("pageprops") or {}).get("wikibase_item")
             if q:
                 out[p["title"]] = q
-        time.sleep(0.1)
     return out
 
 
 def walk(roots, depth, max_pages, session=None):
     """BFS over the category tree -> {page title: [category path ...]} (each page keeps the first path it was found under)."""
-    seen_cats, found, queue = set(), {}, [(r, 0, [r]) for r in roots]
-    while queue and len(found) < max_pages:
+    seen_cats, found, queue, failed = set(), {}, [(r, 0, [r]) for r in roots], []
+    retried = set()
+    while (queue or failed) and len(found) < max_pages:
+        if not queue:                                   # second chance for categories that failed (rate limit)
+            print(f"  retrying {len(failed)} skipped categories after a 60 s pause ...", flush=True)
+            time.sleep(60)
+            queue, failed = failed, []
+            for item in queue:
+                seen_cats.discard(item[0])
         cat, d, path = queue.pop(0)
         if cat in seen_cats:
             continue
@@ -79,13 +108,15 @@ def walk(roots, depth, max_pages, session=None):
         try:
             subs, pages = members(cat, session)
         except Exception as e:
-            print(f"  ! category '{cat}' skipped ({e})", flush=True)
+            print(f"  ! category '{cat}' failed ({e})", flush=True)
+            if cat not in retried:                      # one more try at the end, then give up on it
+                retried.add(cat)
+                failed.append((cat, d, path))
             continue
         for t in pages:
             found.setdefault(t, path)
         if d < depth:
             queue += [(s, d + 1, path + [s]) for s in subs if s not in seen_cats]
-        time.sleep(0.1)
         if len(seen_cats) % 25 == 0:
             print(f"  {len(seen_cats):,} categories read, {len(found):,} pages so far", flush=True)
     return found
