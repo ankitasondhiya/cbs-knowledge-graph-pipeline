@@ -51,7 +51,6 @@ SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLa
   OPTIONAL { ?item p:P2139 ?rs . ?rs psv:P2139 ?rv . ?rv wikibase:quantityAmount ?revenue ; wikibase:quantityUnit ?unit .
              OPTIONAL { ?rs pq:P585 ?revDate } }
   OPTIONAL { ?item wdt:P1128 ?employees }
-  FILTER NOT EXISTS { ?item wdt:P576 [] }      # dissolved / defunct companies are no sales targets
   SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
 }"""
 
@@ -191,7 +190,9 @@ def main():
         added = 0
         for i in range(0, len(todo), 120):
             batch = todo[i:i + 120]
-            tpl = "VALUES ?item { " + " ".join("wd:" + q for q in batch) + " }\n  BIND(?item AS ?kvk)"
+            # dissolved / defunct companies are no sales targets (filter only here: on the big queries it causes timeouts / cut-off JSON)
+            tpl = ("VALUES ?item { " + " ".join("wd:" + q for q in batch) + " }\n  BIND(?item AS ?kvk)\n"
+                   "  FILTER NOT EXISTS { ?item wdt:P576 [] }")
             try:
                 extra = collect(prop, nace, True, tpl)
             except Exception as e:
