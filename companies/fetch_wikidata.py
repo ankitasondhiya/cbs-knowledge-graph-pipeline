@@ -18,7 +18,8 @@ import time
 
 import requests
 
-from common import LANDING, lenient_json, norm_kvk, write_json
+from common import LANDING, lenient_json, norm_kvk, read_json, write_json
+from erp_catalog import slug
 
 UA = {"User-Agent": "cbs-knowledge-graph-pipeline/1.0 (company layer; contact via GitHub)"}
 OUT = LANDING / "wikidata_revenue.json"
@@ -180,6 +181,74 @@ def main():
                 print(f"Wikidata (wider net, part {i}/2): {len(new):,} more Dutch companies without a KvK number on Wikidata")
             except Exception as e:
                 print(f"(wider Wikidata search part {i}/2 skipped: {str(e)[:300]})")
+    # Companies named by Wikipedia's industry categories (fetch_wikipedia.py): fetch their Wikidata details in batches by QID.
+    cands = read_json(LANDING / "wikipedia_candidates.json", [])
+    if cands and not a.no_nl_wide:
+        by_q = {c["qid"]: c for c in cands}
+        have_qid = {r["wikidata"] for r in best.values()}
+        todo = [q for q in by_q if q not in have_qid]
+        added = 0
+        for i in range(0, len(todo), 120):
+            batch = todo[i:i + 120]
+            tpl = "VALUES ?item { " + " ".join("wd:" + q for q in batch) + " }\n  BIND(?item AS ?kvk)"
+            try:
+                extra = collect(prop, nace, True, tpl)
+            except Exception as e:
+                print(f"(Wikipedia candidates batch {i // 120 + 1} skipped: {str(e)[:200]})")
+                continue
+            for k, v in extra.items():
+                if v["wikidata"] in have_qid:
+                    continue
+                c = by_q.get(v["wikidata"], {})
+                v["listSources"] = [c["source"]] if c.get("source") else []
+                v["wikipediaSection"] = c.get("section")
+                best[k] = v
+                have_qid.add(v["wikidata"])
+                added += 1
+            time.sleep(1)
+        print(f"Wikidata (from Wikipedia categories): {added:,} more companies of {len(todo):,} candidates")
+    if cands:        # companies already found by KvK number also get their Wikipedia citation / industry hint
+        by_q = {c["qid"]: c for c in cands}
+        for r in best.values():
+            c = by_q.get(r["wikidata"])
+            if c and not r.get("listSources"):
+                r["listSources"] = [c["source"]]
+                r["wikipediaSection"] = c.get("section")
+    # Journal / ranking / association lists (import_lists.py): every company keeps the list it came from.
+    listed = read_json(LANDING / "listed_companies.json", [])
+    if listed:
+        by_q = {r["wikidata"]: r for r in best.values() if r.get("wikidata")}
+        merged_n = new_n = 0
+        for L in listed:
+            res = L.get("resolved") or {}
+            cite = [f"{s['source']}" + (f" (#{s['rank']})" if s.get("rank") else "") + (f" {s['year']}" if s.get("year") else "")
+                    for s in L.get("sources", [])]
+            rec = by_q.get(res.get("qid")) if res.get("qid") else None
+            if rec is None:
+                kvk = res.get("kvk") or ("list-" + slug(L["name"]))
+                rec = best.get(kvk)
+            if rec is None:
+                kvk = res.get("kvk") or ("list-" + slug(L["name"]))
+                rec = best[kvk] = {"kvk": kvk, "wikidata": res.get("qid"), "kvkFromWebsite": not res.get("kvk"), "name": L["name"],
+                                   "revenue": None, "revenueCurrency": None, "revenueYear": None, "employees": None,
+                                   "industries": [L["industryText"]] if L.get("industryText") else [], "naceCodes": [],
+                                   "city": None, "website": None, "types": [], "descriptions": []}
+                new_n += 1
+            else:
+                merged_n += 1
+            if rec.get("employees") is None:
+                rec["employees"] = L.get("staff") or res.get("staff")
+            if rec.get("revenue") is None:
+                lr = L.get("revenue") or res.get("revenue")
+                if lr:
+                    rec.update(revenue=float(lr), revenueCurrency="euro", revenueYear=L.get("revenueYear"),
+                               revenueSource=(cite[0] if (L.get("revenue") and cite) else "wikidata (exact)"))
+            rec["website"] = rec.get("website") or L.get("website") or res.get("website")
+            rec["city"] = rec.get("city") or L.get("city")
+            rec["listSources"] = sorted(set((rec.get("listSources") or []) + cite))
+            if L.get("section") and not rec.get("listSection"):
+                rec["listSection"] = L["section"]
+        print(f"Lists (journals / associations): {new_n:,} new companies, {merged_n:,} matched to companies we already had")
     rows = list(best.values())
     write_json(OUT, rows)
     print(f"Wikidata: {len(rows):,} companies ({sum(1 for x in rows if str(x['kvk']).startswith('wd-')):,} still without a KvK number), "

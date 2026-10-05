@@ -104,7 +104,7 @@ def fetch_lookup(kvk_file=None):
     """Look up only the KVK numbers we need: one small API call each."""
     import csv, re
     wanted = [r["kvk"] for r in read_json(LANDING / "wikidata_revenue.json", [])
-              if r.get("kvk") and not str(r["kvk"]).startswith("wd-")]       # 'wd-Q..' = no KvK number known yet
+              if r.get("kvk") and not str(r["kvk"]).startswith(("wd-", "list-"))]       # 'wd-Q..' = no KvK number known yet
     wanted += [v["kvk"] for v in read_json(LANDING / "website_facts.json", {}).values() if v and v.get("kvk")]   # found on company websites
     wanted += [r["kvk"] for r in read_jsonl(LANDING / "kvk_profiles.jsonl") if r.get("kvk") and not r.get("notFound")]
     if kvk_file:
