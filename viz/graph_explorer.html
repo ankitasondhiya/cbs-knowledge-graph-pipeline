@@ -326,7 +326,7 @@
         <b>Coverage note:</b> this is a <b>sample</b>, not every Dutch company -- it holds the companies that have a Wikidata record with a KVK number
         (mostly large, well-known firms) plus anyone sales adds via <code>companies/extra_companies.csv</code>. A mid-size company you know may be missing:
         add it there, or load a KVK selection file for full coverage.<br>
-        Named companies per CBS industry with revenue above your threshold, and which ERP each one uses.
+        Named companies per CBS industry with revenue between your minimum and maximum (default EUR 50m - 1.3bn), and which ERP each one uses.
         Revenue is <b>exact</b> where published (Wikidata / annual accounts -- for multinationals this is the <b>global group</b> figure, not the Dutch entity's) and otherwise an <b>estimate</b>
         (staff &times; the industry's revenue per person working, CBS 81156NED). ERP comes from evidence collected by
         <code>companies/erp_enrich.py</code> (your own facts = high, website fingerprint = medium, text mention = low);
@@ -336,9 +336,11 @@
         buying signal from job vacancies: ERP project, ERP role, data/AI role (25). Every point is explained in the "Why now" column.
       </div>
       <div class="tp-controls">
+        <label title="Our focus industries (energy, manufacturing, supply chain, transportation, finance incl. private equity/holdings, construction, IT) -- edit FOCUS_GROUPS in this file / companies/focus_industries.json">Focus industries <select id="tpFocusInd"></select></label>
         <label>Industry <select id="tpIndustry"><option value="">All industries</option></select></label>
         <label>Min revenue (&euro; m) <input id="tpMinRev" type="number" min="0" step="1" value="50"></label>
-        <label title="Our target size: full size points inside this range">Sweet spot (&euro; m) <span style="display:flex;gap:4px"><input id="tpSweetMin" type="number" min="0" step="10" value="50" style="width:70px"><input id="tpSweetMax" type="number" min="0" step="50" value="500" style="width:70px"></span></label>
+        <label title="Upper cap: companies above this are not our target (global group revenue counts for multinationals)">Max revenue (&euro; m) <input id="tpMaxRev" type="number" min="0" step="50" value="1300"></label>
+        <label title="Our target size: full size points inside this range">Sweet spot (&euro; m) <span style="display:flex;gap:4px"><input id="tpSweetMin" type="number" min="0" step="10" value="50" style="width:70px"><input id="tpSweetMax" type="number" min="0" step="50" value="1300" style="width:70px"></span></label>
         <label>Min staff <input id="tpMinStaff" type="number" min="0" step="10" value="100"></label>
         <label>ERP <select id="tpErp"><option value="">Any</option><option value="__known">ERP known</option><option value="__unknown">ERP unknown</option></select></label>
         <label>Focus <select id="tpFocus"><option value="">All accounts</option><option value="change">ERP project / migration under way</option><option value="legacy">Legacy ERP (migration candidates)</option><option value="unknown">ERP unknown (qualify)</option><option value="ai">Hiring data / AI roles</option><option value="sweet">In our size sweet spot</option></select></label>
@@ -2277,7 +2279,7 @@ async function renderCompanyList(kpi, branchLabel, td) {
       const staff = n(c.staff);
       const exact = n(c.revenue);
       const est = n(c.est);
-      const meta = [c.city, (c.kvk && !/^(wd|manual)-/.test(c.kvk)) ? `KVK ${c.kvk}` : '', c.mainSbiDesc, c.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+      const meta = [c.city, (c.kvk && !/^(wd|manual|list)-/.test(c.kvk)) ? `KVK ${c.kvk}` : '', c.mainSbiDesc, c.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
       const group = c.ultimateParentName || c.parentName;
       const nmi = c.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out) -- don&#39;t approach for campaigns</div>' : '';
       return `<tr><td>${escapeHtml(c.name || '--')}<div class="kpi-label-nl">${escapeHtml(meta)}</div>${nmi}`
@@ -2301,6 +2303,12 @@ async function renderCompanyList(kpi, branchLabel, td) {
 // evidence; revenue estimates (staff x industry revenue per worker) and all
 // filters are applied here so exact and estimated revenue rank together.
 const TP = { rows: [], rpw: {}, erpPct: {}, aiPct: {} };
+// Our sales focus: SBI 2008 section letters per group. Keep in sync with companies/focus_industries.json.
+const FOCUS_GROUPS = {
+  'Energy': ['D', 'B'], 'Manufacturing': ['C'], 'Supply chain (logistics, wholesale, distribution)': ['H', 'G'],
+  'Transportation': ['H'], 'Finance (incl. private equity and holding companies)': ['K'], 'Construction': ['F'], 'IT': ['J'],
+};
+const FOCUS_ALL = [...new Set(Object.values(FOCUS_GROUPS).flat())];
 const TP_RANK = { high: 3, medium: 2, low: 1 };
 
 function tpErpHtml(erps, pctUsing) {
@@ -2312,6 +2320,13 @@ function tpErpHtml(erps, pctUsing) {
   return list.map(e => `<span class="tp-erp" title="${escapeHtml([e.source, e.evidence].filter(Boolean).join(' -- '))}">${escapeHtml(e.name)}</span>`
     + `<span class="tp-conf ${escapeHtml(e.confidence || 'low')}">${escapeHtml(e.confidence || 'low')}</span>`
     + (e.lifecycle === 'legacy' ? '<span class="tp-life" title="Older / on-premise generation: a migration candidate">legacy</span>' : '')).join('<br>');
+}
+
+function tpLoadFocusOptions() {
+  const sel = document.getElementById('tpFocusInd');
+  if (sel.options.length) return;
+  sel.innerHTML = '<option value="__all">Our focus industries</option><option value="">All industries</option>'
+    + Object.keys(FOCUS_GROUPS).map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
 }
 
 function tpLoadIndustryOptions() {
@@ -2361,7 +2376,7 @@ async function tpRun() {
              {name: e.name, vendor: e.vendor, confidence: u.confidence, source: u.source, evidence: u.evidence, url: u.evidenceUrl, lifecycle: coalesce(u.lifecycle, e.lifecycle)} END) AS erps
       RETURN c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .revenueSource, .website, .parentName,
                 .ultimateParentName, .mainSbiDesc, .testData, .noMarketing, .signals, .signalCount, .erpChangeSignal,
-                .accountStatus, .accountOwner, .accountNote} AS c,
+                .accountStatus, .accountOwner, .accountNote, .listSources} AS c,
              b.prefLabelNl AS branch, erps
       ORDER BY coalesce(c.revenue, 0) DESC, coalesce(c.staff, 0) DESC
       LIMIT 20000`, {});
@@ -2460,6 +2475,10 @@ function tpScore(r) {
 
 function tpFiltered() {
   const minRev = (Number(document.getElementById('tpMinRev').value) || 0) * 1e6;
+  const maxRevRaw = Number(document.getElementById('tpMaxRev').value);
+  const maxRev = maxRevRaw > 0 ? maxRevRaw * 1e6 : Infinity;
+  const fg = document.getElementById('tpFocusInd').value;
+  const fgLetters = fg === '__all' ? FOCUS_ALL : (FOCUS_GROUPS[fg] || null);
   const minStaff = Number(document.getElementById('tpMinStaff').value) || 0;
   const letter = document.getElementById('tpIndustry').value;
   const erp = document.getElementById('tpErp').value;
@@ -2468,7 +2487,8 @@ function tpFiltered() {
   const acct = document.getElementById('tpAcct').value;
   if (TP.rows.length) TP.rows.forEach(r => Object.assign(r, tpScore(r)));   // sweet spot / profile may have changed
   let rows = TP.rows.filter(r => r.est != null && (!focus || (focus === 'change' ? r.hasChange : focus === 'ai' ? r.hasAi : focus === 'sweet' ? r.sweet : r.status === focus))
-    && (acct !== 'new' || !['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) && r.est >= minRev && (r.staff == null || r.staff >= minStaff)
+    && (acct !== 'new' || !['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) && r.est >= minRev && r.est <= maxRev && (r.staff == null || r.staff >= minStaff)
+    && (!fgLetters || fgLetters.includes((r.branch || '').charAt(0)))
     && !(exactOnly && r.isEst)
     && (!letter || (r.branch || '').startsWith(letter + ' '))
     && (erp === '' || (erp === '__known' ? r.erps.length : erp === '__unknown' ? !r.erps.length : r.erps.some(e => e.name === erp))));
@@ -2505,7 +2525,7 @@ function tpRender() {
   if (!rows.length) { table.innerHTML = ''; table.style.display = 'none'; status.textContent += ' Nothing matches these filters.'; return; }
   const SHOW = 500;
   const body = rows.slice(0, SHOW).map(r => {
-    const meta = [r.city, (r.kvk && !/^(wd|manual)-/.test(r.kvk)) ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
+    const meta = [r.city, (r.kvk && !/^(wd|manual|list)-/.test(r.kvk)) ? `KVK ${r.kvk}` : '', r.mainSbiDesc, r.testData ? 'KVK test data' : ''].filter(Boolean).join(' · ');
     const group = r.ultimateParentName || r.parentName;
     const t = translateLabel(r.branch || '');
     const nmi = (r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '')
@@ -2514,7 +2534,8 @@ function tpRender() {
     const sigHtml = r.sig.slice(0, 2).map(x => `<div class="tp-sub">${x.type === 'erp_change' ? '&#9889; ' : ''}${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title || 'vacancy')}</a>` : escapeHtml(x.title || 'vacancy')}${x.date ? ' · ' + escapeHtml(x.date) : ''}</div>`).join('');
     return `<tr><td><span class="tp-score" style="background:${col}">${r.score}</span></td><td>${escapeHtml(r.branch ? t.en : '(no industry)')}${t.letter ? `<div class="tp-sub">${escapeHtml(r.branch)}</div>` : ''}</td>`
       + `<td><b>${escapeHtml(r.name || '--')}</b><div class="tp-sub">${escapeHtml(meta)}</div>`
-      + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '') + nmi + `</td>`
+      + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '')
+      + ((r.listSources || []).length ? `<div class="tp-sub">listed in: ${escapeHtml(r.listSources.join(' · '))}</div>` : '') + nmi + `</td>`
       + `<td class="num">${r.staff != null ? r.staff.toLocaleString('nl-NL') : '--'}</td>`
       + `<td class="num">${r.isEst ? '~' : ''}${escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.isEst ? 'estimate'
           : escapeHtml([r.revenueYear, r.revenueSource].filter(Boolean).join(', ') || 'published')}</div></td>`
@@ -2529,12 +2550,12 @@ function tpRender() {
 
 function tpCsv() {
   const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const head = ['score', 'industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_lifecycle', 'erp_source', 'why_now', 'next_step', 'signals', 'account_status', 'owner', 'website'];
+  const head = ['score', 'industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_lifecycle', 'erp_source', 'why_now', 'next_step', 'signals', 'account_status', 'owner', 'listed_in', 'website'];
   const lines = tpFiltered().map(r => {
     const top = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
     return [r.score, r.branch, r.name, r.kvk, r.city, r.staff, Math.round(r.est), r.isEst ? 'estimate' : 'published',
       top.map(e => e.name).join('; '), top.map(e => e.confidence).join('; '), top.map(e => e.lifecycle || '').join('; '), top.map(e => e.source).join('; '),
-      r.why.join(' | '), r.next, r.sig.map(x => `${x.title} (${x.url || ''})`).join('; '), r.accountStatus || '', r.accountOwner || '', r.website].map(q).join(',');
+      r.why.join(' | '), r.next, r.sig.map(x => `${x.title} (${x.url || ''})`).join('; '), r.accountStatus || '', r.accountOwner || '', (r.listSources || []).join(' | '), r.website].map(q).join(',');
   });
   const blob = new Blob(['﻿' + head.join(',') + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -2551,9 +2572,10 @@ try {
 }));
 document.getElementById('tpRun').onclick = tpRun;
 document.getElementById('tpCsv').onclick = tpCsv;
-['tpIndustry', 'tpMinRev', 'tpMinStaff', 'tpSweetMin', 'tpSweetMax', 'tpAcct', 'tpErp', 'tpFocus', 'tpSort', 'tpExact'].forEach(id =>
+['tpFocusInd', 'tpIndustry', 'tpMinRev', 'tpMaxRev', 'tpMinStaff', 'tpSweetMin', 'tpSweetMax', 'tpAcct', 'tpErp', 'tpFocus', 'tpSort', 'tpExact'].forEach(id =>
   document.getElementById(id).addEventListener('change', () => { if (TP.rows.length) tpRender(); }));
 tpLoadIndustryOptions();
+tpLoadFocusOptions();
 
 async function toggleDrill(kpi, branchLabel, tr) {
   const existing = tr.nextElementSibling;

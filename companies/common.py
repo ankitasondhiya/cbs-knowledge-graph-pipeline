@@ -214,6 +214,23 @@ def section_from_industry_names(names, extra_keywords=False):
     return None
 
 
+FOCUS_FILE = Path(__file__).resolve().parent / "focus_industries.json"
+
+
+def load_focus():
+    """focus_industries.json -> {'min', 'max', 'groups': {name: [letters]}, 'sections': {letters}, ...} (defaults if missing)."""
+    cfg = {}
+    try:
+        cfg = json.loads(FOCUS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    groups = cfg.get("groups") or {}
+    return {"min": float(cfg.get("min_revenue_eur") or 50e6), "max": float(cfg.get("max_revenue_eur") or 1.3e9),
+            "groups": groups, "sections": {l for v in groups.values() for l in v},
+            "wiki_categories": cfg.get("wikipedia_categories") or ["Nederlands bedrijf"],
+            "wiki_depth": int(cfg.get("wikipedia_depth") or 3), "wiki_max_pages": int(cfg.get("wikipedia_max_pages") or 4000)}
+
+
 def lenient_json(resp):
     """resp.json(), but tolerant of raw control characters inside strings.
     Wikidata labels occasionally contain one (e.g. a stray tab/newline), which makes the

@@ -69,7 +69,7 @@ def read_csv_evidence(path, companies=None):
         for row in csv.DictReader(f, dialect=dialect):
             row = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
             kv = row.get("kvk") or ""
-            kvk = kv if re.match(r"(?i)^(wd|manual)-", kv) else (norm_kvk(kv) if kv else None)   # keep synthetic ids as they are
+            kvk = kv if re.match(r"(?i)^(wd|manual|list)-", kv) else (norm_kvk(kv) if kv else None)   # keep synthetic ids as they are
             if not kvk and row.get("company"):
                 key = name_key(row["company"])
                 kvk = index.get(key) if key else None

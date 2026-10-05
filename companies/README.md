@@ -130,6 +130,19 @@ Account knowledge overrides the score: **customer** -> "expand scope" with the o
 **lost** -> re-open only with a trigger. Use **Accounts -> New business only** to hide all of those. Focus filters: ERP project under way,
 legacy ERP, ERP unknown, hiring data/AI roles, in our size sweet spot. **Download CSV** exports score, reasons, next step, signals, status and owner for the CRM.
 
+### Focus industries and the revenue range (energy, manufacturing, supply chain, transportation, finance, construction, IT)
+`companies/focus_industries.json` is our sales focus: the SBI sections per group (Energy D+B, Manufacturing C, Supply chain H+G, Transportation H,
+Finance K -- which includes private equity and holding companies, Construction F, IT J) and the revenue range **EUR 50m to EUR 1.3bn**.
+* The pipeline drops companies whose **published** revenue is outside the range (`--min-revenue` / `--max-revenue`, workflow inputs `min_revenue_m` / `max_revenue_m`).
+  Wikidata revenue is often the **global group** figure, so a Dutch subsidiary of a large group is dropped too -- add it via `extra_companies.csv` if it matters.
+* KPI 10 has a **Focus industries** filter (default on), a **Max revenue** box (default 1,300) and shows where each company was listed ("listed in: ...").
+  Edit `FOCUS_GROUPS` in `viz/graph_explorer.html` together with the JSON file.
+* **Discovery per industry (free, cited):** (1) `fetch_wikipedia.py` walks Wikipedia's company categories ("Nederlands bedrijf" -> energy, banks, construction ...), keeps pages
+  of the focus industries and looks them up on Wikidata; (2) **journal / ranking / association lists** dropped into `companies/lists/` (CSV, Excel or pasted text) are imported by
+  `import_lists.py` with their source and rank and matched to Wikidata by exact name; (3) the website scan then reads each company's own site (KvK number, staff, address).
+  See `companies/lists/README.md`. Complete coverage of every Dutch company is only possible with the KVK register (see KVK_ORDER_BRIEF.md); this route builds the best free,
+  source-cited list.
+
 ### Improving coverage without KVK (free route)
 1. **Wider Wikidata search** (`fetch_wikidata.py`): besides companies that list a KvK number, it now also takes any Dutch company (country / HQ = Netherlands, a kind of business)
    with **100+ employees or a published revenue**, even without a KvK number (`--no-nl-wide` switches it off). Such companies are keyed `wd-<QID>` until a KvK number is found.

@@ -168,7 +168,7 @@ def main():
     todo = [c for c in cands if c.get("website") and c["kvk"] not in done]
     # who benefits most: no KvK number yet, no staff count, or no industry -- and the biggest first
     def need(c):
-        return (str(c["kvk"]).startswith("wd-")) + (c.get("employees") is None and c.get("staff") is None) + (not (c.get("naceCodes") or c.get("industries")))
+        return (str(c["kvk"]).startswith(("wd-", "list-"))) + (c.get("employees") is None and c.get("staff") is None) + (not (c.get("naceCodes") or c.get("industries")))
     todo.sort(key=lambda c: (-need(c), -(c.get("revenue") or 0) - (c.get("employees") or c.get("staff") or 0)))
     todo = todo[: a.max]
     print(f"Website facts: {len(cands):,} candidates, {len(done):,} already scanned, scanning {len(todo):,} websites "

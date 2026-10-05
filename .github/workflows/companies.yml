@@ -12,9 +12,23 @@ on:
   workflow_dispatch:
     inputs:
       min_revenue_m:
-        description: "Drop companies whose PUBLISHED revenue is below this many EUR million (0 = keep all)."
+        description: "Drop companies whose PUBLISHED revenue is below this many EUR million (0 = keep all). Our focus: 50."
         required: false
-        default: "10"
+        default: "50"
+      max_revenue_m:
+        description: "Upper cap: drop companies whose PUBLISHED revenue is above this many EUR million (0 = no cap). Our focus: 1300 (EUR 1.3bn). Note: Wikidata revenue is often the GLOBAL group figure."
+        required: false
+        default: "1300"
+      wikipedia_discovery:
+        description: "true = discover companies per focus industry from Wikipedia's industry categories (free, cited). Adds a few minutes."
+        required: false
+        default: true
+        type: boolean
+      resolve_lists:
+        description: "true = look the companies in companies/lists/*.csv|xlsx|txt (journal / association lists) up on Wikidata for website, KvK number, staff, revenue."
+        required: false
+        default: true
+        type: boolean
       min_staff:
         description: "Only companies with at least this many working persons (0 = no floor)."
         required: false
@@ -61,6 +75,9 @@ jobs:
       NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
       NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
       MIN_REV_M: ${{ github.event.inputs.min_revenue_m }}
+      MAX_REV_M: ${{ github.event.inputs.max_revenue_m }}
+      WIKI_DISCOVERY: ${{ github.event.inputs.wikipedia_discovery }}
+      RESOLVE_LISTS: ${{ github.event.inputs.resolve_lists }}
       MIN_STAFF: ${{ github.event.inputs.min_staff }}
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
       SCAN_WEBSITES: ${{ github.event.inputs.scan_websites }}
@@ -91,7 +108,15 @@ jobs:
 
       - name: Company list - KVK selection file if you committed one, else Wikidata + GLEIF only
         run: |
-          MINREV="$(python -c "print(float('${MIN_REV_M:-10}')*1e6)")"
+          MINREV="$(python -c "print(float('${MIN_REV_M:-50}')*1e6)")"
+          MAXREV="$(python -c "print(float('${MAX_REV_M:-1300}')*1e6)")"
+          if [ "$WIKI_DISCOVERY" != "false" ]; then
+            python fetch_wikipedia.py || echo "(Wikipedia discovery skipped)"   # companies per focus industry from Wikipedia's categories (free, cited)
+          fi
+          if ls lists/*.csv lists/*.xlsx lists/*.txt >/dev/null 2>&1; then
+            pip install openpyxl >/dev/null 2>&1 || true
+            if [ "$RESOLVE_LISTS" != "false" ]; then python import_lists.py --resolve; else python import_lists.py; fi
+          fi
           python fetch_wikidata.py      # exact revenue / employees for the large, well-known companies (free)
           if [ "$SCAN_WEBSITES" != "false" ]; then
             python website_facts.py --max "${WEB_MAX:-400}"   # KvK number / staff / address / industry hints from the companies' own sites (free)
@@ -106,16 +131,16 @@ jobs:
             BUILD=""
           elif [ "$USE_KVK_API" = "true" ] && [ -n "$KVK_API_KEY" ]; then
             echo "Enriching the free list with KVK profiles (paid, capped at ${KVK_MAX_CALLS:-20} calls)"
-            python build_companies.py --free --min-revenue "$MINREV" --min-staff 0   # companies.json = who to look up
+            python build_companies.py --free --min-revenue "$MINREV" --max-revenue "$MAXREV" --min-staff 0   # companies.json = who to look up
             python fetch_kvk.py --from-companies --max-calls "${KVK_MAX_CALLS:-20}"
             BUILD=""
           else
             echo "No kvk_selection.csv/.xlsx and no KVK API -> free sources only (a SAMPLE of large, well-known companies)"
             BUILD="--free"
           fi
-          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
+          python build_companies.py $BUILD --min-revenue "$MINREV" --max-revenue "$MAXREV" --min-staff "${MIN_STAFF:-100}"
           python fetch_gleif.py parents
-          python build_companies.py $BUILD --min-revenue "$MINREV" --min-staff "${MIN_STAFF:-100}"
+          python build_companies.py $BUILD --min-revenue "$MINREV" --max-revenue "$MAXREV" --min-staff "${MIN_STAFF:-100}"
 
       - name: ERP evidence (your CSV, vendor reference pages, website scan)
         run: |

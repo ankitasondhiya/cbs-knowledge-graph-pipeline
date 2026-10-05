@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from collections import Counter
 
-from common import (LANDING, norm_kvk, SBI2008_SECTION_LABEL, is_euro, read_json, read_jsonl, sbi_section,
+from common import (LANDING, load_focus, norm_kvk, SBI2008_SECTION_LABEL, is_euro, read_json, read_jsonl, sbi_section,
                     section_from_industry_names, size_bands, write_json)
 
 
@@ -35,10 +35,14 @@ def main():
                     help="sales focus: only companies with at least this many working persons (default 100 -- "
                          "lowers it for smaller firms)")
     ap.add_argument("--free", action="store_true", help="build from Wikidata + GLEIF only (no KVK profiles)")
-    ap.add_argument("--min-revenue", type=float, default=10e6,
-                    help="sales focus: drop companies whose PUBLISHED revenue is below this (default EUR 10m). "
+    FOCUS = load_focus()
+    ap.add_argument("--min-revenue", type=float, default=FOCUS["min"],
+                    help="sales focus: drop companies whose PUBLISHED revenue is below this (default from focus_industries.json, EUR 50m). "
                          "Companies without published revenue are kept -- the dashboard estimates theirs "
                          "(staff x industry revenue per worker) and applies the same threshold. 0 = keep all.")
+    ap.add_argument("--max-revenue", type=float, default=FOCUS["max"],
+                    help="upper cap: drop companies whose PUBLISHED revenue is above this (default from focus_industries.json, EUR 1.3bn). "
+                         "NOTE: Wikidata revenue is often the GLOBAL group figure, so a Dutch subsidiary of a large group is dropped too. 0 = no cap.")
     a = ap.parse_args()
 
     gleif = {r["kvk"]: r for r in read_jsonl(LANDING / "gleif_nl.jsonl") if r.get("kvk")}
@@ -80,14 +84,18 @@ def main():
                         via = via_
                         break
             fx = facts.get(w["kvk"]) or {}
+            if not (code or letter_only or by_name) and w.get("listSection"):
+                by_name, via = w["listSection"], "journal / association list"
+            if not (code or letter_only or by_name) and w.get("wikipediaSection"):
+                by_name, via = w["wikipediaSection"], "wikipedia category"
             if not (code or letter_only or by_name) and fx.get("sectionGuess"):
                 by_name, via = fx["sectionGuess"], "company website (text)"
             staff_w = w.get("employees") if w.get("employees") is not None else fx.get("staff")
             fa = fx.get("address") or {}
             profiles.append({
-                "kvkReal": (fx.get("kvk") if str(w["kvk"]).startswith("wd-") else None),
+                "kvkReal": (fx.get("kvk") if str(w["kvk"]).startswith(("wd-", "list-")) else None),
                 "websiteUsed": bool(fx) and (w.get("employees") is None and fx.get("staff") is not None
-                                             or str(w["kvk"]).startswith("wd-") and bool(fx.get("kvk")) or bool(fa)),
+                                             or str(w["kvk"]).startswith(("wd-", "list-")) and bool(fx.get("kvk")) or bool(fa)),
                 "kvk": w["kvk"], "wikidata": w.get("wikidata"), "name": w.get("name"), "tradeNames": [],
                 "industryByName": bool(by_name), "industryVia": via,
                 "mainSbi": code or letter_only or by_name, "mainSbiDesc": ", ".join(w.get("industries", [])[:2]) or (w.get("descriptions") or [None])[0],
@@ -131,6 +139,9 @@ def main():
         if a.min_revenue and rev is not None and rev < a.min_revenue:
             skipped[f"published revenue below EUR {a.min_revenue / 1e6:,.0f}m"] += 1
             continue
+        if a.max_revenue and rev is not None and rev > a.max_revenue:
+            skipped[f"published revenue above the EUR {a.max_revenue / 1e9:,.1f}bn cap"] += 1
+            continue
         name = p.get("name") or g.get("name")
         if not name or re.fullmatch(r"Q\d+", name.strip()):    # Wikidata item without a label shows up as 'Q81307'
             name = g.get("name")
@@ -139,7 +150,7 @@ def main():
             continue
         out.append({
             "kvk": p.get("kvkReal") or p["kvk"],
-            "uriKey": p["kvk"] if str(p["kvk"]).startswith("wd-") else None,     # stable node id even after the KvK number is found
+            "uriKey": p["kvk"] if str(p["kvk"]).startswith(("wd-", "list-")) else None,     # stable node id even after the KvK number is found
             "kvkSource": "company website" if p.get("kvkReal") else None,
             "name": name,
             "legalName": g.get("name"),
@@ -166,11 +177,14 @@ def main():
             "ultimateParentName": (par.get("ultimate") or {}).get("name"),
             "revenue": rev,
             "revenueYear": w.get("revenueYear") if rev else None,
-            "revenueSource": (("company website (text)" if rev_site else "wikidata (exact)") if rev else None),
+            "revenueSource": (("company website (text)" if rev_site else (w.get("revenueSource") or "wikidata (exact)")) if rev else None),
             "wikidata": w.get("wikidata"),
             "noMarketing": p.get("noMarketing"),
             "sources": [s for s, ok in (("kvk", not p.get("freeSource")), ("gleif", bool(g)), ("wikidata", bool(w)),
+                                         ("wikipedia", any(str(x).startswith("Wikipedia") for x in (w.get("listSources") or []))),
+                                         ("list", any(not str(x).startswith("Wikipedia") for x in (w.get("listSources") or []))),
                                          ("website", bool(p.get("websiteUsed")))) if ok],
+            "listSources": list(w.get("listSources") or []),
             "industrySource": ("manual override" if ov else (p.get("industryVia") or "wikidata industry name" if p.get("industryByName") else "wikidata NACE")
                                if p.get("freeSource") else "kvk SBI") if section else None,
         })
@@ -232,7 +246,8 @@ def main():
                             "parentLei": None, "parentName": None, "ultimateParentLei": None, "ultimateParentName": None,
                             "revenue": rev, "revenueYear": r.get("revenue_year") or None,
                             "revenueSource": "added by sales (csv)" if rev else None, "wikidata": None, "noMarketing": None,
-                            "sources": ["manual"], "industrySource": "manual (sales)" if sec else None})
+                            "sources": ["manual"], "listSources": ["added by our sales team (extra_companies.csv)"],
+                            "industrySource": "manual (sales)" if sec else None})
                 have_kvk.add(kvk); added.append(nm)
         print(f"extra companies: {len(added):,} added from {extra_path.name}"
               + (f"; {len(dup):,} already in the list: {dup[:10]}" if dup else ""))

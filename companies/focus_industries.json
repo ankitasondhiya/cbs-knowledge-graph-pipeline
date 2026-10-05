@@ -1,0 +1,17 @@
+{
+  "_comment": "Our sales focus. Edit this file to change it. 'sections' are SBI 2008 section letters (A-U). The revenue range applies to PUBLISHED revenue in the pipeline and to published-or-estimated revenue in the KPI 10 dashboard (dashboard defaults are in viz/graph_explorer.html, FOCUS_GROUPS).",
+  "min_revenue_eur": 50000000,
+  "max_revenue_eur": 1300000000,
+  "groups": {
+    "Energy": ["D", "B"],
+    "Manufacturing": ["C"],
+    "Supply chain (logistics, wholesale, distribution)": ["H", "G"],
+    "Transportation": ["H"],
+    "Finance (incl. private equity and holding companies)": ["K"],
+    "Construction": ["F"],
+    "IT": ["J"]
+  },
+  "wikipedia_categories": ["Nederlands bedrijf"],
+  "wikipedia_depth": 3,
+  "wikipedia_max_pages": 4000
+}

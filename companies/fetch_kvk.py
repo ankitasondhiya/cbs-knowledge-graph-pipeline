@@ -131,7 +131,7 @@ def main():
     elif a.from_companies:
         from common import read_json
         wanted = list(dict.fromkeys(c["kvk"] for c in read_json(LANDING / "companies.json", [])
-                                    if c.get("kvk") and not str(c["kvk"]).startswith("manual-")))
+                                    if c.get("kvk") and not str(c["kvk"]).startswith(("manual-", "wd-", "list-"))))
         if not wanted:
             sys.exit("No companies.json yet -- run build_companies.py (free) first.")
     elif a.kvk_file:
