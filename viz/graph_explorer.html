@@ -347,6 +347,7 @@
         <label>Accounts <select id="tpAcct"><option value="">All</option><option value="new">New business only (hide customers, partners, competitors, do-not-contact)</option></select></label>
         <label>Sort <select id="tpSort"><option value="score">Opportunity score</option><option value="rev">Revenue, high to low</option><option value="ind">Industry, then revenue</option></select></label>
         <label class="tp-check"><input id="tpExact" type="checkbox"> exact revenue only</label>
+        <label class="tp-check" title="Companies named for a focus industry (Wikipedia / lists) but with no staff count or revenue yet. They are shown with a low size score and 'size unknown' -- verify before pitching."><input id="tpUnsized" type="checkbox" checked> include companies with unknown size</label>
         <button id="tpRun">Run</button>
         <button id="tpCsv" class="secondary" disabled>Download CSV</button>
       </div>
@@ -2421,12 +2422,14 @@ function tpSweet() {
 function tpScore(r) {
   let score = 0; const why = [];
   const { lo, hi } = tpSweet();
+  const sizeKnown = r.est != null;
   const rev = r.est || 0;
   const multinational = (r.staff || 0) >= 50000 || rev > 4 * hi;
-  const size = multinational ? 6 : (rev >= lo && rev <= hi) ? 25 : rev > hi ? 15 : rev >= lo / 2 ? 15 : 8;
+  const size = !sizeKnown ? 8 : multinational ? 6 : (rev >= lo && rev <= hi) ? 25 : rev > hi ? 15 : rev >= lo / 2 ? 15 : 8;
   r.sweet = !multinational && rev >= lo && rev <= hi;
   score += size;
-  why.push(`size ${fmtEuro(rev)}${r.isEst ? ' (est.)' : ''}${multinational ? ' -- very large group, rarely a mid-market buyer' : r.sweet ? ' -- in our sweet spot' : ''}: +${size}`);
+  if (!sizeKnown) why.push('size unknown (no staff count or revenue found yet) -- verify the company is in our size range: +8');
+  else why.push(`size ${fmtEuro(rev)}${r.isEst ? ' (est.)' : ''}${multinational ? ' -- very large group, rarely a mid-market buyer' : r.sweet ? ' -- in our sweet spot' : ''}: +${size}`);
   const pu = r.branch ? TP.erpPct[r.branch] : null;
   const gap = pu == null ? null : Math.max(0, 100 - pu);
   const g = gap == null ? 4 : Math.round(10 * Math.min(gap, 50) / 50);
@@ -2491,13 +2494,14 @@ function tpFiltered() {
   const focus = document.getElementById('tpFocus').value;
   const acct = document.getElementById('tpAcct').value;
   if (TP.rows.length) TP.rows.forEach(r => Object.assign(r, tpScore(r)));   // sweet spot / profile may have changed
-  let rows = TP.rows.filter(r => r.est != null && (!focus || (focus === 'change' ? r.hasChange : focus === 'ai' ? r.hasAi : focus === 'sweet' ? r.sweet : r.status === focus))
-    && (acct !== 'new' || !['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) && r.est >= minRev && r.est <= maxRev && (r.staff == null || r.staff >= minStaff)
+  const withUnsized = document.getElementById('tpUnsized').checked && !exactOnly;
+  let rows = TP.rows.filter(r => (r.est != null || withUnsized) && (!focus || (focus === 'change' ? r.hasChange : focus === 'ai' ? r.hasAi : focus === 'sweet' ? r.sweet : r.status === focus))
+    && (acct !== 'new' || !['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) && (r.est == null || (r.est >= minRev && r.est <= maxRev)) && (r.staff == null || r.staff >= minStaff)
     && (!fgLetters || fgLetters.includes((r.branch || '').charAt(0)))
     && !(exactOnly && r.isEst)
     && (!letter || (r.branch || '').startsWith(letter + ' '))
     && (erp === '' || (erp === '__known' ? r.erps.length : erp === '__unknown' ? !r.erps.length : r.erps.some(e => e.name === erp))));
-  const byRev = (a, b) => b.est - a.est;
+  const byRev = (a, b) => (b.est || 0) - (a.est || 0);
   const sortBy = document.getElementById('tpSort').value;
   rows.sort(sortBy === 'ind' ? (a, b) => (a.branch || '~').localeCompare(b.branch || '~') || byRev(a, b)
     : sortBy === 'score' ? (a, b) => b.score - a.score || byRev(a, b) : byRev);
@@ -2508,13 +2512,13 @@ function tpRender() {
   const rows = tpFiltered();
   const status = document.getElementById('tpStatus'), summary = document.getElementById('tpSummary'), table = document.getElementById('tpTable');
   const sized = TP.rows.filter(r => r.est != null).length;
-  const totalRev = rows.reduce((s, r) => s + r.est, 0);
+  const totalRev = rows.reduce((s, r) => s + (r.est || 0), 0);
   const known = rows.filter(r => r.erps.length).length;
-  const exact = rows.filter(r => !r.isEst).length;
+  const exact = rows.filter(r => r.est != null && !r.isEst).length;
   const inds = new Set(rows.map(r => r.branch)).size;
   status.className = '';
   status.textContent = `${TP.rows.length.toLocaleString()} companies loaded, ${sized.toLocaleString()} could be sized (exact revenue, or staff x industry revenue per worker); `
-    + `${(TP.rows.length - sized).toLocaleString()} have neither and are left out.`;
+    + `${(TP.rows.length - sized).toLocaleString()} have neither` + (document.getElementById('tpUnsized').checked ? ' (shown as "size unknown", low size score).' : ' and are left out (tick "include companies with unknown size" to see them).');
   summary.innerHTML = [
     [rows.length.toLocaleString(), 'companies match'],
     [inds.toLocaleString(), 'industries'],
@@ -2542,7 +2546,7 @@ function tpRender() {
       + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '')
       + ((r.listSources || []).length ? `<div class="tp-sub">listed in: ${escapeHtml(r.listSources.join(' · '))}</div>` : '') + nmi + `</td>`
       + `<td class="num">${r.staff != null ? r.staff.toLocaleString('nl-NL') : '--'}</td>`
-      + `<td class="num">${r.isEst ? '~' : ''}${escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.isEst ? 'estimate'
+      + `<td class="num">${r.est == null ? '--' : (r.isEst ? '~' : '') + escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.est == null ? 'size unknown' : r.isEst ? 'estimate'
           : escapeHtml([r.revenueYear, r.revenueSource].filter(Boolean).join(', ') || 'published')}</div></td>`
       + `<td>${tpErpHtml(r.erps, r.branch ? TP.erpPct[r.branch] : null)}</td>`
       + `<td class="tp-why">${escapeHtml(r.why.join(' · '))}<div class="tp-next">${escapeHtml(r.next)}</div>${sigHtml}</td></tr>`;
@@ -2558,7 +2562,7 @@ function tpCsv() {
   const head = ['score', 'industry', 'company', 'kvk', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'erp', 'erp_confidence', 'erp_lifecycle', 'erp_source', 'why_now', 'next_step', 'signals', 'account_status', 'owner', 'listed_in', 'website'];
   const lines = tpFiltered().map(r => {
     const top = r.erps.slice().sort((a, b) => (TP_RANK[b.confidence] || 0) - (TP_RANK[a.confidence] || 0));
-    return [r.score, r.branch, r.name, r.kvk, r.city, r.staff, Math.round(r.est), r.isEst ? 'estimate' : 'published',
+    return [r.score, r.branch, r.name, r.kvk, r.city, r.staff, r.est == null ? '' : Math.round(r.est), r.est == null ? 'unknown' : r.isEst ? 'estimate' : 'published',
       top.map(e => e.name).join('; '), top.map(e => e.confidence).join('; '), top.map(e => e.lifecycle || '').join('; '), top.map(e => e.source).join('; '),
       r.why.join(' | '), r.next, r.sig.map(x => `${x.title} (${x.url || ''})`).join('; '), r.accountStatus || '', r.accountOwner || '', (r.listSources || []).join(' | '), r.website].map(q).join(',');
   });
@@ -2577,7 +2581,7 @@ try {
 }));
 document.getElementById('tpRun').onclick = tpRun;
 document.getElementById('tpCsv').onclick = tpCsv;
-['tpFocusInd', 'tpIndustry', 'tpMinRev', 'tpMaxRev', 'tpMinStaff', 'tpSweetMin', 'tpSweetMax', 'tpAcct', 'tpErp', 'tpFocus', 'tpSort', 'tpExact'].forEach(id =>
+['tpFocusInd', 'tpIndustry', 'tpMinRev', 'tpMaxRev', 'tpMinStaff', 'tpSweetMin', 'tpSweetMax', 'tpAcct', 'tpErp', 'tpFocus', 'tpSort', 'tpExact', 'tpUnsized'].forEach(id =>
   document.getElementById(id).addEventListener('change', () => { if (TP.rows.length) tpRender(); }));
 tpLoadIndustryOptions();
 tpLoadFocusOptions();
