@@ -190,3 +190,15 @@ Commit any of `erp_evidence.csv`, `erp_reference_sources.csv`, `job_postings.csv
 A vacancy for an "SAP ECC -> S/4HANA migration" records ECC as what they run today and S/4HANA only as the (low-confidence) target.
 
 *Paid coverage:* for broad ERP coverage buy a technographics sample (HG Insights, 6sense, BuiltWith ...) for your target companies and import it via `--csv`.
+
+## IT & consultancy firms (partner / channel segment) and trade-media signals
+
+* Dashboard KPI 10 -> "Focus industries" -> **IT & consultancy firms (partner / channel segment)**: firms that run migrations for others and may need
+  data-migration capacity or an AI factory. Not part of "Our focus industries" (those are the end customers).
+* `news_signals.py` (workflow step "Buying signals from IT / business media"): reads ONLY the RSS/Atom feeds listed in `news_feeds.csv`
+  (Computable, AG Connect, Dutch IT Channel, Emerce, Executive Finance, CFO, Consultancy.nl), matches our companies in headline/teaser and stores
+  a dated link as signal `news_migration` (+18 in the score) or `news_ai` (+6). No article pages, no paywalled text, robots.txt respected.
+  **Check each publisher's terms for automated feed reading before scheduling; delete a row from `news_feeds.csv` if not allowed.**
+* Job ads of IT/consulting firms (Capgemini, Accenture, Ordina ...) are kept as signal `delivery_migration` (+15): "runs migration programmes for clients".
+* Consultancy.nl firm list: no scraping. Put a member list / export you are allowed to use into `companies/lists/` (see `_template.csv`).
+* No e-mail addresses are collected by this pipeline (see the contact-data note in the PR / chat: licensed or consented sources only).

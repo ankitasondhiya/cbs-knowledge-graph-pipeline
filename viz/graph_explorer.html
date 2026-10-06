@@ -2307,8 +2307,9 @@ const TP = { rows: [], rpw: {}, erpPct: {}, aiPct: {} };
 const FOCUS_GROUPS = {
   'Energy': ['D', 'B'], 'Manufacturing': ['C'], 'Supply chain (logistics, wholesale, distribution)': ['H', 'G'],
   'Transportation': ['H'], 'Finance (incl. private equity and holding companies)': ['K'], 'Construction': ['F'], 'IT': ['J'],
+  'IT & consultancy firms (partner / channel segment)': ['J', 'M'],      // run migrations for others: separate view, not in "Our focus industries"
 };
-const FOCUS_ALL = [...new Set(Object.values(FOCUS_GROUPS).flat())];
+const FOCUS_ALL = [...new Set(Object.entries(FOCUS_GROUPS).filter(([k]) => !k.includes('partner')).flatMap(([, v]) => v))];
 const TP_RANK = { high: 3, medium: 2, low: 1 };
 
 function tpErpHtml(erps, pctUsing) {
@@ -2453,10 +2454,14 @@ function tpScore(r) {
     score += pts; why.push(`runs ${cur.name} (${cur.confidence} evidence): +${pts}`); status = 'current';
     next = `Runs ${cur.name}: pitch AI / data / automation on top of it -- not a replacement.`;
   }
+  const news = r.sig.find(x => x.type === 'news_migration'), newsAi = r.sig.find(x => x.type === 'news_ai'), deliv = r.sig.find(x => x.type === 'delivery_migration');
   const chg = r.sig.find(x => x.type === 'erp_change'), role = r.sig.find(x => x.type === 'erp_role'), aid = r.sig.find(x => x.type === 'ai_data');
   if (chg) { score += 25; why.push(`ERP project / migration being staffed ("${chg.title}"): +25`); next = 'ERP project under way: get in front of the selection / implementation team now. ' + next; }
+  else if (news) { score += 18; why.push(`in the IT / business press about a migration or transformation ("${news.title}"): +18`); next = 'In the news for a migration / transformation programme: ask who runs data migration and what happens to the data. ' + next; }
+  else if (deliv) { score += 15; why.push('runs ERP / migration programmes for clients (hiring for them): +15'); next = 'Delivers migrations for others: pitch data-migration capacity / an AI factory as a partner. ' + next; }
   else {
-    const pts = (role ? 8 : 0) + (aid ? 6 : 0);
+    const pts = (role ? 8 : 0) + (aid ? 6 : 0) + (newsAi ? 6 : 0);
+    if (newsAi) why.push(`in the press about a data / AI programme ("${newsAi.title}"): +6`);
     if (role) why.push('hiring for an ERP-related role: +8');
     if (aid) { why.push(`hiring for a data / AI / automation role ("${aid.title}"): +6`); next = 'Hiring data / AI roles: open an AI / data services conversation. ' + next; }
     score += pts;
@@ -2531,7 +2536,7 @@ function tpRender() {
     const nmi = (r.noMarketing ? '<div class="kpi-nmi">no marketing (KVK opt-out)</div>' : '')
       + (r.accountStatus ? `<div class="tp-sub"><b>${escapeHtml(r.accountStatus)}</b>${r.accountOwner ? ' · owner ' + escapeHtml(r.accountOwner) : ''}${r.accountNote ? ' · ' + escapeHtml(r.accountNote) : ''}</div>` : '');
     const col = r.score >= 70 ? '#c62828' : r.score >= 50 ? '#ef8f00' : '#78909c';
-    const sigHtml = r.sig.slice(0, 2).map(x => `<div class="tp-sub">${x.type === 'erp_change' ? '&#9889; ' : ''}${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title || 'vacancy')}</a>` : escapeHtml(x.title || 'vacancy')}${x.date ? ' · ' + escapeHtml(x.date) : ''}</div>`).join('');
+    const sigHtml = r.sig.slice(0, 2).map(x => `<div class="tp-sub">${['erp_change', 'news_migration', 'delivery_migration'].includes(x.type) ? '&#9889; ' : ''}${x.url ? `<a href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title || 'vacancy')}</a>` : escapeHtml(x.title || 'vacancy')}${x.date ? ' · ' + escapeHtml(x.date) : ''}</div>`).join('');
     return `<tr><td><span class="tp-score" style="background:${col}">${r.score}</span></td><td>${escapeHtml(r.branch ? t.en : '(no industry)')}${t.letter ? `<div class="tp-sub">${escapeHtml(r.branch)}</div>` : ''}</td>`
       + `<td><b>${escapeHtml(r.name || '--')}</b><div class="tp-sub">${escapeHtml(meta)}</div>`
       + (group ? `<div class="tp-sub">part of ${escapeHtml(group)}</div>` : '')

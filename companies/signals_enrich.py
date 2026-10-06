@@ -38,8 +38,12 @@ OUT = LANDING / "signals.json"
 MAX_PER_COMPANY = 8
 
 AGENCY = re.compile(r"randstad|tempo.?team|adecco|manpower|hays\b|brunel|yacht|michael page|page personnel|robert half|"
-                    r"olympia|start people|covebo|maandag|uitzend|detachering|recruit|talent|capgemini|accenture|deloitte|"
-                    r"kpmg|pwc\b|ey\b|cgi\b|sogeti|atos|ordina|cegeka|bearingpoint|avanade|qurius|ctac|sligro it", re.I)
+                    r"olympia|start people|covebo|maandag|uitzend|detachering|recruit|talent", re.I)
+# IT / consulting firms that DELIVER migrations for others: their ERP vacancies are not "we are migrating" but "we run many migration
+# programmes" -> a partner / channel signal (type delivery_migration), shown for the partner segment, never as an end-customer project.
+INTEGRATOR = re.compile(r"capgemini|accenture|deloitte|kpmg|pwc\b|\bey\b|cgi\b|sogeti|atos|ordina|cegeka|bearingpoint|avanade|"
+                        r"qurius|ctac|sligro it|infosys|tcs\b|wipro|cognizant|conclusion|inetum|devoteam|cronos|oracle consulting|"
+                        r"sap nederland|valid\b|team ?ict|ictivity|axians|computacenter|bechtle|eeuwenverwant|\bdxc\b", re.I)
 
 CHANGE = re.compile(r"migrat|implement|selectie|selection|vervang|replace|transform|upgrade|go[- ]?live|roll[- ]?out|"
                     r"conversie|conversion|nieuw(?:e)? erp|erp[- ]programma|erp[- ]project|s/?4 ?hana (?:transit|migrat)", re.I)
@@ -90,11 +94,13 @@ def process_vacancies(vacancies, companies):
             continue
         kvk = match_company(v.get("company"), norm_kvk(v.get("kvk")) if v.get("kvk") else None, index, by_kvk)
         c = classify(v.get("title") or "", v.get("text") or "")
+        if c and INTEGRATOR.search(v.get("company") or "") and c["type"] in ("erp_change", "erp_role"):
+            c = {**c, "type": "delivery_migration"}      # partner signal, see INTEGRATOR
         if not kvk or not c or (kvk, v.get("url") or v.get("title")) in seen:
             continue
         seen.add((kvk, v.get("url") or v.get("title")))
-        label = {"erp_change": "ERP project / migration being staffed", "ai_data": "hiring for a data / AI / automation role"
-                 }.get(c["type"], "ERP-related role")
+        label = {"erp_change": "ERP project / migration being staffed", "ai_data": "hiring for a data / AI / automation role",
+                 "delivery_migration": "delivers ERP / migration programmes for clients (hiring for them)"}.get(c["type"], "ERP-related role")
         # "SAP ECC -> S/4HANA migration": the legacy system is what they run today, the other is the TARGET
         legacy = [n for n in c["erps"] if lifecycle_of(n) == "legacy"]
         migrating_from_legacy = c["type"] == "erp_change" and bool(legacy)
@@ -102,7 +108,7 @@ def process_vacancies(vacancies, companies):
         signals.setdefault(kvk, []).append({
             "type": c["type"], "label": label, "erp": shown, "title": v.get("title"),
             "url": v.get("url"), "date": v.get("date"), "evidence": c["evidence"]})
-        for n in c["erps"]:
+        for n in ([] if c["type"] == "delivery_migration" else c["erps"]):     # an integrator's ad says nothing about ITS OWN ERP
             target = migrating_from_legacy and n not in legacy
             erp_recs.append({"kvk": kvk, "erp": n, "vendor": CATALOG[n]["vendor"],
                              "confidence": "low" if target else ("medium" if n in c["in_title"] else "low"),

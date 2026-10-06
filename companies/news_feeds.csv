@@ -1,0 +1,8 @@
+name,url,note
+Computable,https://www.computable.nl/,IT projects / migrations / enterprise AI. Feed is auto-discovered from the page; put the exact RSS URL in the url column if it is not found.
+AG Connect,https://www.agconnect.nl/,CIO / IT governance / cloud and AI strategy
+Dutch IT Channel,https://dutchitchannel.nl/,Which integrators / partners execute migrations and AI programmes
+Emerce,https://www.emerce.nl/,Corporate data / AI / cloud transformation
+Executive Finance,https://executivefinance.nl/,Finance-side view of IT investments and AI rollouts
+CFO Magazine,https://cfo.nl/,Boardroom view of IT investments
+Consultancy.nl,https://www.consultancy.nl/,Consultancy news (only if its terms allow automated reading -- otherwise delete this row)
