@@ -158,6 +158,10 @@ jobs:
           [ -n "$ADZUNA_APP_ID" ] && [ -n "$ADZUNA_APP_KEY" ] && SARGS="$SARGS --adzuna"
           if [ -n "$SARGS" ]; then python signals_enrich.py $SARGS; else echo "No job_postings.csv and no ADZUNA_* secrets -- skipping vacancy signals."; fi
 
+      - name: Buying signals from IT / business media (RSS headlines only)
+        run: |
+          if [ -f news_feeds.csv ]; then python news_signals.py || echo "(news signals skipped)"; else echo "No news_feeds.csv -- skipping."; fi
+
       - name: Load into Neo4j
         run: |
           if [ "$DRY_RUN" = "true" ]; then python load_companies.py --dry-run; else python load_companies.py; fi
