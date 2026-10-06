@@ -20,6 +20,7 @@ import csv
 import json
 import re
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
@@ -133,6 +134,8 @@ def scan_site(session, key, website, max_pages=6):
 
 def read_targets(a):
     if a.csv:
+        if not Path(a.csv).exists():
+            raise SystemExit(f"CSV not found: {a.csv} -- commit the dashboard's CSV export (columns company, kvk, website) at that path.")
         with open(a.csv, encoding="utf-8-sig", newline="") as f:
             rows = list(csv.DictReader(f))
         return [{"kvk": r.get("kvk") or r.get("company"), "name": r.get("company") or r.get("name"), "website": r.get("website")}
