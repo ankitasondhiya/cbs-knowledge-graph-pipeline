@@ -33,5 +33,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: company_contacts
-          path: companies/landing_zone/companies/company_contacts.csv
+          path: landing_zone/companies/company_contacts.csv
           retention-days: 14
