@@ -28,6 +28,15 @@ from common import (LANDING, load_focus, norm_kvk, SBI2008_SECTION_LABEL, is_eur
                     section_from_industry_names, size_bands, write_json)
 
 
+def _one(v):
+    """Address parts from websites can arrive as lists / objects: always return one clean string (or None)."""
+    if isinstance(v, (list, tuple)):
+        v = " ".join(str(i) for i in v if i)
+    elif isinstance(v, dict):
+        v = v.get("name") or ""
+    return (str(v).strip() or None) if v is not None else None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--test", action="store_true")
@@ -173,9 +182,9 @@ def main():
             "sizeBand": band,
             "ictSizeBand": ict_band,
             "legalForm": p.get("legalForm"),
-            "city": (p.get("address") or {}).get("city") or ((g.get("legalAddress") or {}).get("city")),
-            "postcode": (p.get("address") or {}).get("postcode"),
-            "street": " ".join(x for x in [(p.get("address") or {}).get("street"),
+            "city": _one((p.get("address") or {}).get("city")) or _one((g.get("legalAddress") or {}).get("city")),
+            "postcode": _one((p.get("address") or {}).get("postcode")),
+            "street": " ".join(x for x in [_one((p.get("address") or {}).get("street")),
                                             str((p.get("address") or {}).get("number") or "")] if x).strip() or None,
             "website": (p.get("websites") or [None])[0],
             "lei": g.get("lei"),

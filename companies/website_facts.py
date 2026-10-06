@@ -77,6 +77,16 @@ def _walk(node):
             yield from _walk(v)
 
 
+def _txt(v):
+    """JSON-LD values may be a string, a list of strings or a nested object -> one clean string (or None)."""
+    if isinstance(v, (list, tuple)):
+        v = " ".join(x for x in (_txt(i) for i in v) if x)
+    elif isinstance(v, dict):
+        v = v.get("name") or v.get("@value") or ""
+    v = re.sub(r"\s+", " ", str(v)).strip() if v not in (None, "") else ""
+    return v or None
+
+
 def extract_facts(html, url):
     """Pure function: one page -> {kvk, staff, revenue, address, title, description} (only what is present)."""
     text = _plain(html)
@@ -102,7 +112,7 @@ def extract_facts(html, url):
         t = node.get("@type")
         t = " ".join(t) if isinstance(t, list) else str(t or "")
         if "PostalAddress" in t and "address" not in f and (node.get("streetAddress") or node.get("postalCode")):
-            f["address"] = {"street": node.get("streetAddress"), "postcode": node.get("postalCode"), "city": node.get("addressLocality")}
+            f["address"] = {"street": _txt(node.get("streetAddress")), "postcode": _txt(node.get("postalCode")), "city": _txt(node.get("addressLocality"))}
         if re.search(r"Organization|Corporation|LocalBusiness", t):
             ne = node.get("numberOfEmployees")
             val = ne.get("value") if isinstance(ne, dict) else ne
