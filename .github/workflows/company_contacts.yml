@@ -1,0 +1,37 @@
+name: Company contact details
+
+# Manual. Reads the dashboard's CSV export (commit it as companies/target_accounts.csv: columns company, kvk, website)
+# and collects PUBLIC COMPANY-LEVEL contact details from each company's own website (role mailboxes like info@, phone numbers,
+# and names + roles of CTO / CFO / IT leaders where the company publishes them). No personal e-mail addresses, no LinkedIn.
+# Result: download the artifact "company_contacts" (CSV). Check use of the data with compliance (GDPR / Telecommunicatiewet).
+on:
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: "CSV in the repo with columns company, kvk, website"
+        required: true
+        default: "companies/target_accounts.csv"
+
+permissions:
+  contents: read
+
+jobs:
+  contacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CSV_PATH: ${{ github.event.inputs.csv_path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r companies/requirements.txt
+      - name: Collect contact details
+        working-directory: companies
+        run: python contact_facts.py --csv "../$CSV_PATH"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: company_contacts
+          path: landing_zone/companies/company_contacts.csv
+          retention-days: 14
