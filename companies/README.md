@@ -202,3 +202,9 @@ A vacancy for an "SAP ECC -> S/4HANA migration" records ECC as what they run tod
 * Job ads of IT/consulting firms (Capgemini, Accenture, Ordina ...) are kept as signal `delivery_migration` (+15): "runs migration programmes for clients".
 * Consultancy.nl firm list: no scraping. Put a member list / export you are allowed to use into `companies/lists/` (see `_template.csv`).
 * No e-mail addresses are collected by this pipeline (see the contact-data note in the PR / chat: licensed or consented sources only).
+
+## Company contact details (public, company level)
+Workflow **Company contact details** (manual): commit the dashboard's CSV export as `companies/target_accounts.csv`, run it, download the artifact
+`company_contacts`. `contact_facts.py` reads each company's own website (robots.txt respected) and lists role mailboxes (info@, pers@, ir@ ...), phone
+numbers and names + roles of CTO / CFO / IT leaders where the company publishes them, each with the page it came from. Personal-looking e-mail
+addresses are counted but never stored; no LinkedIn, no guessing. Check any use (event invitations) with compliance first.
