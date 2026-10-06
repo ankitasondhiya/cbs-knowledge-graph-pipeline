@@ -50,6 +50,22 @@ LEAD2 = re.compile(r"\b(" + ROLE + r")\s*[:–—|\-]\s*" + NAME)
 LEAD_ROLE_JSON = re.compile(ROLE, re.I)
 
 
+def _cf_decode(hexstr):
+    """Cloudflare 'email protection': the site publishes the address as hex in the page; decode it (a standard XOR)."""
+    try:
+        b = bytes.fromhex(hexstr)
+        return "".join(chr(c ^ b[0]) for c in b[1:])
+    except (ValueError, IndexError):
+        return ""
+
+
+def _readable(html):
+    """Page text in which common obfuscations of published addresses are written normally."""
+    t = re.sub(r"(?i)\s*[\[(]\s*(?:at|apenstaartje|@)\s*[\])]\s*", "@", html)
+    t = re.sub(r"(?i)\s*[\[(]\s*(?:dot|punt)\s*[\])]\s*", ".", t)
+    return t.replace("&#64;", "@").replace("&commat;", "@").replace("%40", "@")
+
+
 def _domain(url):
     h = urlparse(url if "//" in url else "//" + url).netloc.lower().split(":")[0]
     return h[4:] if h.startswith("www.") else h
@@ -62,8 +78,17 @@ def _same_site(email_domain, site_domain):
 
 def extract_contacts(html, site_domain):
     """Pure function: one page -> {emails:[role mailboxes], skipped:int, phones:[...], leaders:[{name, role}]}"""
+    html = _readable(html)
     text = _plain(html)
     raw = set(re.findall(r"mailto:([^\"'?\s>]+)", html, re.I)) | set(EMAIL.findall(html)) | set(EMAIL.findall(text))
+    raw |= {_cf_decode(h) for h in re.findall(r'data-cfemail=["\']([0-9a-fA-F]+)', html)}
+    raw |= {_cf_decode(h) for h in re.findall(r"email-protection#([0-9a-fA-F]+)", html)}
+    ld_phones = []
+    for node in _walk(_jsonld(html)):
+        if _txt(node.get("email")):
+            raw.add(_txt(node.get("email")).replace("mailto:", ""))
+        if _txt(node.get("telephone")):
+            ld_phones.append(_txt(node.get("telephone")))
     emails, skipped = set(), 0
     for e in raw:
         e = e.strip().strip(".,;:").lower()
@@ -77,7 +102,7 @@ def extract_contacts(html, site_domain):
         else:
             skipped += 1          # looks personal (name@...): counted, never stored
     phones = []
-    for p in re.findall(r"tel:([+\d\s().\-]+)", html, re.I) + PHONE.findall(text):
+    for p in ld_phones + re.findall(r"tel:([+\d\s().\-]+)", html, re.I) + PHONE.findall(text):
         p = re.sub(r"\s+", " ", p).strip(" .-")
         digits = re.sub(r"\D", "", p)
         if 9 <= len(digits) <= 13 and p not in phones:
@@ -96,7 +121,11 @@ def extract_contacts(html, site_domain):
     return {"emails": sorted(emails), "skipped": skipped, "phones": phones[:3], "leaders": leaders}
 
 
-def scan_site(session, key, website, max_pages=6):
+DEFAULT_PATHS = ["/contact", "/contact-us", "/contact/", "/over-ons", "/about", "/about-us", "/organisatie", "/bestuur", "/directie",
+                 "/management", "/leadership", "/team", "/pers", "/press", "/investors", "/nl/contact", "/en/contact"]
+
+
+def scan_site(session, key, website, max_pages=9):
     url = website if re.match(r"https?://", website or "", re.I) else "https://" + (website or "")
     dom = _domain(url)
     cache, seen, todo = {}, set(), [url]
@@ -121,6 +150,8 @@ def scan_site(session, key, website, max_pages=6):
         for l in got["leaders"]:
             res["leaders"].setdefault((l["name"].lower(), l["role"].lower()), {**l, "url": u})
         if len(seen) == 1:
+            base = f"{urlparse(r.url).scheme}://{urlparse(r.url).netloc}"
+            todo += [base + pth for pth in DEFAULT_PATHS]            # standard contact / leadership paths (404s are simply skipped)
             for href in re.findall(r'href=["\']([^"\'#]+)', html, re.I):
                 full = urljoin(r.url, href).split("?")[0]
                 if _same_site(_domain(full), dom) and PAGE_HINT.search(urlparse(full).path) and full not in seen and full not in todo:
