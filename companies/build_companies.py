@@ -54,7 +54,12 @@ def main():
                          "NOTE: Wikidata revenue is often the GLOBAL group figure, so a Dutch subsidiary of a large group is dropped too. 0 = no cap.")
     ap.add_argument("--no-unsized", action="store_true",
                     help="drop companies whose size (staff and revenue) is unknown, even when a focus-industry source named them")
+    ap.add_argument("--segment", choices=["main", "succession"], default="main",
+                    help="succession = owner-managed SMEs (10-249 staff, EUR 1-49m revenue, manufacturing / logistics / trade, independent) "
+                         "-> companies_succession.json for KPI 11. main = the normal target list.")
     a = ap.parse_args()
+    succ = a.segment == "succession"
+    SUCC_SECTIONS = {"C", "G", "H"}      # manufacturing, trade (retail + wholesale), transport & logistics
 
     gleif = {r["kvk"]: r for r in read_jsonl(LANDING / "gleif_nl.jsonl") if r.get("kvk")}
     parents = read_json(LANDING / "gleif_parents.json", {})
@@ -134,7 +139,21 @@ def main():
         # Discovery from Wikipedia categories / journal lists: keep a company of unknown size when it was NAMED for one of our focus
         # industries (checked once the industry is known, below); the website scan / team files may still size it. Flagged sizeUnknown.
         unsized_focus = bool(a.free and staff is None and w_rev is None and _w.get("listSources") and not a.no_unsized)
-        if a.min_staff and not unknown_ok and not unsized_focus and (staff is None or staff < a.min_staff):
+        fx_ = facts.get(p["kvk"]) or {}
+        founded = fx_.get("foundedYear") or _w.get("founded")
+        has_signal = bool(fx_.get("familyBusiness") or fx_.get("successionWords") or fx_.get("ownerLed") or (founded and founded <= 1995))
+        if succ:
+            # owner-managed SMEs: size 10-249 staff (or unknown but with an owner-led signal), published revenue EUR 1-49m
+            if staff is not None and not (10 <= staff <= 249):
+                skipped["outside 10-249 staff"] += 1
+                continue
+            if staff is None and not has_signal:
+                skipped["unknown size and no owner-led signal"] += 1
+                continue
+            if w_rev is not None and not (1e6 <= w_rev <= 49e6):
+                skipped["published revenue outside EUR 1-49m"] += 1
+                continue
+        elif a.min_staff and not unknown_ok and not unsized_focus and (staff is None or staff < a.min_staff):
             skipped[f"fewer than {a.min_staff} staff (or unknown)"] += 1
             continue
         ms = (p.get("mainSbi") or "").strip()
@@ -142,21 +161,27 @@ def main():
         ov = overrides.get(p.get("wikidata") or "") or overrides.get(p["kvk"])
         if ov:
             section = ov
-        if unsized_focus and section not in FOCUS["sections"]:
+        if succ and section not in SUCC_SECTIONS:
+            skipped["not manufacturing / trade / logistics"] += 1
+            continue
+        if unsized_focus and not succ and section not in FOCUS["sections"]:
             skipped["unknown size and not in a focus industry"] += 1
             continue
         band, ict_band = size_bands(staff)
         g = gleif.get(p.get("kvkReal") or p["kvk"], {})
         w = wiki.get(p["kvk"], {})
         par = parents.get(g.get("lei"), {}) if g.get("lei") else {}
+        if succ and (par.get("direct") or {}).get("lei"):
+            skipped["part of a group (has a parent)"] += 1
+            continue
         rev = w.get("revenue") if is_euro(w.get("revenueCurrency")) else None
         rev_site = None
         if rev is None and (facts.get(p["kvk"]) or {}).get("revenue"):
             rev = rev_site = facts[p["kvk"]]["revenue"]      # stated by the company itself (text) -- labelled as such
-        if a.min_revenue and rev is not None and rev < a.min_revenue:
+        if not succ and a.min_revenue and rev is not None and rev < a.min_revenue:
             skipped[f"published revenue below EUR {a.min_revenue / 1e6:,.0f}m"] += 1
             continue
-        if a.max_revenue and rev is not None and rev > a.max_revenue:
+        if not succ and a.max_revenue and rev is not None and rev > a.max_revenue:
             skipped[f"published revenue above the EUR {a.max_revenue / 1e9:,.1f}bn cap"] += 1
             continue
         name = p.get("name") or g.get("name")
@@ -169,7 +194,13 @@ def main():
             "kvk": p.get("kvkReal") or p["kvk"],
             "uriKey": p["kvk"] if str(p["kvk"]).startswith(("wd-", "list-")) else None,     # stable node id even after the KvK number is found
             "kvkSource": "company website" if p.get("kvkReal") else None,
-            "sizeUnknown": True if unsized_focus else None,      # named for a focus industry, no staff / revenue found yet
+            "succession": True if succ else None,
+            "foundedYear": founded,
+            "familyBusiness": True if fx_.get("familyBusiness") else None,
+            "successionWords": True if fx_.get("successionWords") else None,
+            "successionEvidence": fx_.get("successionEvidence"),
+            "ownerLed": True if fx_.get("ownerLed") else None,
+            "sizeUnknown": True if (unsized_focus or (succ and staff is None and w_rev is None)) else None,      # named for a focus industry, no staff / revenue found yet
             "name": name,
             "legalName": g.get("name"),
             "tradeNames": p.get("tradeNames", []),
@@ -226,7 +257,7 @@ def main():
     # record). companies/extra_companies.csv: company | kvk | section A-U | staff | revenue_eur | revenue_year | city | website | note
     # They bypass the staff / revenue filters (a person chose them). With no KVK number they get the id 'manual-<name>'.
     extra_path = Path(__file__).resolve().parent / "extra_companies.csv"
-    if extra_path.exists() and not a.test:
+    if extra_path.exists() and not a.test and not succ:
         import csv
         from erp_catalog import slug
         from name_match import name_key
@@ -273,7 +304,7 @@ def main():
             c = next(x for x in out if x["name"] == nm)
             if c["staff"] is None and c["revenue"] is None:
                 print(f"  ! {nm}: no staff and no revenue -- KPI 10 cannot size it; add one of them")
-    write_json(LANDING / ("companies.test.json" if a.test else "companies.json"), out)
+    write_json(LANDING / ("companies.test.json" if a.test else ("companies_succession.json" if succ else "companies.json")), out)
     print(f"{len(out):,} companies built  (skipped: {dict(skipped) or 'none'})")
     print(f"  with LEI: {sum(1 for c in out if c['lei']):,}   with parent: {sum(1 for c in out if c['parentLei']):,}"
           f"   with exact revenue: {sum(1 for c in out if c['revenue']):,}")

@@ -208,3 +208,15 @@ Workflow **Company contact details** (manual): commit the dashboard's CSV export
 `company_contacts`. `contact_facts.py` reads each company's own website (robots.txt respected) and lists role mailboxes (info@, pers@, ir@ ...), phone
 numbers and names + roles of CTO / CFO / IT leaders where the company publishes them, each with the page it came from. Personal-looking e-mail
 addresses are counted but never stored; no LinkedIn, no guessing. Check any use (event invitations) with compliance first.
+
+## KPI 11 -- owner-managed companies (succession segment)
+Separate list for **independent, owner-managed companies in manufacturing, retail + wholesale (trade) and transport / logistics, 10-249 staff, EUR 1-49m revenue**
+whose founder generation may be near retirement (offer: ERP / data clean-up ahead of a hand-over, AI / automation).
+
+* `python build_companies.py --free --segment succession` -> `companies_succession.json`; `python load_companies.py --succession` loads it as `:Company {succession: true}`
+  (the "CBS companies" workflow does both when **succession_segment** is on). KPI 10 does not list these companies (it hides `succession` companies under 100 staff).
+* **Company-level signals only -- no ages, no personal data.** Founding year (Wikidata P571 or the company website), family-business wording, owner / founder wording,
+  succession / hand-over wording (with the sentence it came from), independence (no GLEIF parent) and size. A company founded before 1996 has a founder who is now roughly 60-75.
+* Wider net: `fetch_wikidata.py` also reads Dutch items with 10-99 employees; `website_facts.py --smb` scans small / unsized companies first.
+* **Coverage is partial** (free sources). The real population is in CBS 81589NED / 86280NED. Add companies via `companies/lists/` or `companies/extra_companies.csv`.
+  Always confirm the owner on the company's own site / LinkedIn by hand before outreach.

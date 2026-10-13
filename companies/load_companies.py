@@ -38,7 +38,7 @@ BATCH = 500
 PROPS = ["kvk", "kvkSource", "sizeUnknown", "listSources", "name", "legalName", "tradeNames", "mainSbi", "mainSbiDesc", "sbiCodes", "section", "staff",
          "sizeBand", "ictSizeBand", "legalForm", "city", "postcode", "street", "website", "lei", "leiStatus",
          "parentName", "ultimateParentName", "revenue", "revenueYear", "revenueSource", "wikidata", "sources",
-         "industrySource", "noMarketing"]
+         "industrySource", "noMarketing", "succession", "foundedYear", "familyBusiness", "successionWords", "successionEvidence", "ownerLed"]
 
 LOAD = """
 UNWIND $rows AS row
@@ -188,6 +188,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="ignore the 90%% Aura Free safety margin")
     ap.add_argument("--remove-test", action="store_true")
     ap.add_argument("--erp-only", action="store_true", help="only load erp.json (USES_ERP links)")
+    ap.add_argument("--succession", action="store_true", help="load companies_succession.json (owner-managed SMEs, KPI 11) instead of companies.json")
     a = ap.parse_args()
 
     if a.remove_test:
@@ -201,7 +202,7 @@ def main():
             load_erp(s, a.dry_run)
         return
 
-    companies = read_json(LANDING / ("companies.test.json" if a.test else "companies.json"), [])
+    companies = read_json(LANDING / ("companies.test.json" if a.test else ("companies_succession.json" if a.succession else "companies.json")), [])
     if not companies:
         sys.exit("No companies to load -- run build_companies.py first.")
     rows = rows_for(companies, a.test)
@@ -230,7 +231,8 @@ def main():
             print(f"  loaded {min(i + BATCH, len(rows)):,}/{len(rows):,}", flush=True)
         linked = s.run("MATCH (c:Company)-[:IN_BRANCH]->() RETURN count(DISTINCT c) AS n").single()["n"]
         print(f"Done. {linked:,} companies linked to a CBS industry.")
-        load_erp(s, False)
+        if not a.succession:
+            load_erp(s, False)
 
 
 if __name__ == "__main__":
