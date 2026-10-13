@@ -42,6 +42,15 @@ on:
         description: "Max websites to scan per run (largest / most incomplete first)."
         required: false
         default: "1500"
+      succession_segment:
+        description: "true = also build the owner-managed SME list for KPI 11 (10-249 staff, EUR 1-49m, manufacturing / trade / logistics, founder-generation signals)."
+        required: false
+        default: true
+        type: boolean
+      succession_website_scan_max:
+        description: "Extra websites to scan for the succession segment (small / unsized companies first)."
+        required: false
+        default: "1500"
       detect_erp:
         description: "true = also scan company websites for ERP fingerprints (slow, best-effort; low hit rate)."
         required: false
@@ -82,6 +91,8 @@ jobs:
       DETECT_ERP: ${{ github.event.inputs.detect_erp }}
       SCAN_WEBSITES: ${{ github.event.inputs.scan_websites }}
       WEB_MAX: ${{ github.event.inputs.website_scan_max }}
+      SUCCESSION: ${{ github.event.inputs.succession_segment }}
+      SUCC_WEB_MAX: ${{ github.event.inputs.succession_website_scan_max }}
       DRY_RUN: ${{ github.event.inputs.dry_run }}
       USE_KVK_API: ${{ github.event.inputs.use_kvk_api }}
       KVK_MAX_CALLS: ${{ github.event.inputs.kvk_max_calls }}
@@ -141,6 +152,11 @@ jobs:
           python build_companies.py $BUILD --min-revenue "$MINREV" --max-revenue "$MAXREV" --min-staff "${MIN_STAFF:-100}"
           python fetch_gleif.py parents
           python build_companies.py $BUILD --min-revenue "$MINREV" --max-revenue "$MAXREV" --min-staff "${MIN_STAFF:-100}"
+          if [ "$SUCCESSION" != "false" ]; then
+            # KPI 11: owner-managed SMEs (separate list, separate file). Small / unsized companies first, then the build with its own filters.
+            if [ "$SCAN_WEBSITES" != "false" ]; then python website_facts.py --max "${SUCC_WEB_MAX:-1500}" --smb || echo "(succession website scan skipped)"; fi
+            python build_companies.py --free --segment succession || echo "(succession segment skipped)"
+          fi
 
       - name: ERP evidence (your CSV, vendor reference pages, website scan)
         run: |
@@ -165,3 +181,6 @@ jobs:
       - name: Load into Neo4j
         run: |
           if [ "$DRY_RUN" = "true" ]; then python load_companies.py --dry-run; else python load_companies.py; fi
+          if [ "$SUCCESSION" != "false" ] && [ -f ../landing_zone/companies/companies_succession.json ]; then
+            if [ "$DRY_RUN" = "true" ]; then python load_companies.py --succession --dry-run; else python load_companies.py --succession; fi
+          fi

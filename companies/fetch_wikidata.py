@@ -43,7 +43,7 @@ def find_property(search, must_contain, what, required=True):
 
 
 QUERY = """
-SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLabel ?nace ?cityLabel ?website WHERE {
+SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLabel ?nace ?cityLabel ?website ?inception WHERE {
   %(anchor)s
   OPTIONAL { ?item wdt:P452 ?industry . %(nace)s }
   OPTIONAL { ?item wdt:P159 ?city }
@@ -51,6 +51,7 @@ SELECT ?item ?itemLabel ?kvk ?revenue ?unitLabel ?revDate ?employees ?industryLa
   OPTIONAL { ?item p:P2139 ?rs . ?rs psv:P2139 ?rv . ?rv wikibase:quantityAmount ?revenue ; wikibase:quantityUnit ?unit .
              OPTIONAL { ?rs pq:P585 ?revDate } }
   OPTIONAL { ?item wdt:P1128 ?employees }
+  OPTIONAL { ?item wdt:P571 ?inception }   # founding date -> "founder generation" signal for the succession segment
   SERVICE wikibase:label { bd:serviceParam wikibase:language "nl,en". }
 }"""
 
@@ -71,6 +72,11 @@ NL_ANCHORS = [
   BIND(?item AS ?kvk)""",
     """?item wdt:P17 wd:Q55 .
   ?item wdt:P2139 ?r0 .
+  FILTER NOT EXISTS { ?item wdt:%(p)s [] }
+  BIND(?item AS ?kvk)""",
+    # 10-99 employees: the small / mid-size owner-managed firms of the succession segment (KPI 11)
+    """?item wdt:P17 wd:Q55 .
+  ?item wdt:P1128 ?e0 . FILTER(?e0 >= 10 && ?e0 < 100)
   FILTER NOT EXISTS { ?item wdt:%(p)s [] }
   BIND(?item AS ?kvk)""",
 ]
@@ -118,13 +124,17 @@ def collect(prop, nace, nl_mode, anchor_tpl=None):
                                     "name": b.get("itemLabel", {}).get("value"),
                                     "revenue": None, "revenueCurrency": None, "revenueYear": None, "employees": None,
                                     "industries": [], "naceCodes": [], "city": None, "website": None,
-                                    "types": [], "descriptions": []})
+                                    "types": [], "descriptions": [], "founded": None})
         ind = b.get("industryLabel", {}).get("value")
         if ind and ind not in rec["industries"]:
             rec["industries"].append(ind)
         nc = b.get("nace", {}).get("value")
         if nc and nc not in rec["naceCodes"]:
             rec["naceCodes"].append(nc)
+        if "inception" in b and not rec["founded"]:
+            m_ = re.match(r"-?(\d{4})", b["inception"]["value"])
+            if m_:
+                rec["founded"] = int(m_.group(1))
         if not rec["website"] and b.get("website"):
             rec["website"] = b["website"]["value"]
         if not rec["city"] and b.get("cityLabel"):
@@ -178,9 +188,9 @@ def main():
                 new = {k: v for k, v in extra.items() if v["wikidata"] not in have_qid}
                 have_qid |= {v["wikidata"] for v in new.values()}
                 best.update(new)
-                print(f"Wikidata (wider net, part {i}/2): {len(new):,} more Dutch companies without a KvK number on Wikidata")
+                print(f"Wikidata (wider net, part {i}/{len(NL_ANCHORS)}): {len(new):,} more Dutch companies without a KvK number on Wikidata")
             except Exception as e:
-                print(f"(wider Wikidata search part {i}/2 skipped: {str(e)[:300]})")
+                print(f"(wider Wikidata search part {i}/{len(NL_ANCHORS)} skipped: {str(e)[:300]})")
     # Companies named by Wikipedia's industry categories (fetch_wikipedia.py): fetch their Wikidata details in batches by QID.
     cands = read_json(LANDING / "wikipedia_candidates.json", [])
     if cands and not a.no_nl_wide:

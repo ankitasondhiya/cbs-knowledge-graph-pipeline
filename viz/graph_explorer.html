@@ -86,6 +86,20 @@
   #targetPanel .tp-controls label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; display: flex; flex-direction: column; gap: 3px; }
   #targetPanel .tp-controls input[type=number] { width: 90px; }
   #targetPanel .tp-controls label.tp-check { flex-direction: row; align-items: center; gap: 5px; text-transform: none; font-size: 12px; padding-bottom: 7px; }
+  #succPanel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  #succPanel h3 { font-size: 14px; margin: 2px 0 4px 0; }
+  #succPanel .tp-blurb { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 10px; max-width: 900px; }
+  #succPanel .tp-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 8px; }
+  #succPanel .tp-controls label { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; display: flex; flex-direction: column; gap: 3px; }
+  #succPanel .tp-controls input[type=number] { width: 90px; }
+  #succPanel .tp-controls label.tp-check { flex-direction: row; align-items: center; gap: 5px; text-transform: none; font-size: 12px; padding-bottom: 7px; }
+  #spStatus { font-size: 11.5px; color: var(--muted); margin: 6px 0; min-height: 15px; }
+  #spStatus.err { color: #c0392b; }
+  #spSummary { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+  #spSummary .tp-stat { background: #f5f7fa; border-radius: 8px; padding: 8px 12px; min-width: 120px; }
+  #spSummary .tp-stat b { display: block; font-size: 18px; }
+  #spSummary .tp-stat span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; }
+  .sp-chip { display: inline-block; font-size: 10.5px; background: #eef3fb; color: #2b4c7e; border-radius: 10px; padding: 1px 7px; margin: 1px 3px 1px 0; }
   #tpStatus { font-size: 11.5px; color: var(--muted); margin: 6px 0; min-height: 15px; }
   #tpStatus.err { color: #c0392b; }
   #tpSummary { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
@@ -354,6 +368,37 @@
       <div id="tpStatus"></div>
       <div id="tpSummary"></div>
       <div class="tp-scroll"><table class="tp-table" id="tpTable" style="display:none"></table></div>
+    </div>
+    <div id="succPanel">
+      <div class="kpi-num" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">KPI 11 -- owner-managed companies (succession)</div>
+      <h3>Succession targets: owner-led manufacturing, trade and logistics companies, EUR 1m - 49m</h3>
+      <div class="tp-blurb">
+        <b>Who this is for:</b> independent, owner-managed companies in <b>manufacturing, retail and wholesale (trade) and transport / logistics</b> whose founder generation
+        may be approaching retirement: an <b>ERP / data clean-up before a sale or hand-over</b> and <b>AI / automation</b> are the offer.<br>
+        <b>No personal data and no ages.</b> The score uses <b>company-level signals only</b> -- how long ago the company was founded (founded before 1996 = founder is now ~60-75),
+        family-business wording, owner / founder wording and succession wording on the company's <b>own website</b>, being independent (no parent in GLEIF), and the size band.
+        Source of every signal: Wikidata (founding year), the company website (<code>website_facts.py</code>), GLEIF (parent). Revenue is exact where published, otherwise
+        staff &times; the industry's revenue per person working (CBS 81156NED).<br>
+        <b>Coverage note:</b> free sources only reach a <b>fraction</b> of the thousands of Dutch SMEs in these industries (CBS tables 81589NED / 86280NED give the real population).
+        Treat the list as a starting point: <b>check each company's owner on its website / LinkedIn by hand</b> before outreach. More companies: put a list in <code>companies/lists/</code> or <code>companies/extra_companies.csv</code>.
+      </div>
+      <div class="tp-controls">
+        <label>Industry <select id="spInd"><option value="">Manufacturing + trade + logistics</option><option value="C">Manufacturing</option><option value="G">Retail + wholesale (trade)</option><option value="H">Transport + logistics</option></select></label>
+        <label>Revenue min (&euro; m) <input id="spMinRev" type="number" min="0" step="1" value="1"></label>
+        <label>Revenue max (&euro; m) <input id="spMaxRev" type="number" min="0" step="1" value="49"></label>
+        <label>Staff min <input id="spMinStaff" type="number" min="0" step="5" value="10"></label>
+        <label>Staff max <input id="spMaxStaff" type="number" min="0" step="10" value="249"></label>
+        <label title="Founded in or before this year: the founder is likely 60-75 today">Founded by <input id="spFounded" type="number" min="1850" max="2020" step="1" value="1995"></label>
+        <label class="tp-check"><input id="spUnknownYear" type="checkbox" checked> include unknown founding year</label>
+        <label class="tp-check"><input id="spUnsized" type="checkbox" checked> include unknown size</label>
+        <label class="tp-check" title="Only companies with at least one owner-led signal: founded by the year above, family, owner or succession wording"><input id="spSignalOnly" type="checkbox"> only with an owner-led signal</label>
+        <label>Sort <select id="spSort"><option value="score">Succession score</option><option value="founded">Founded, oldest first</option><option value="rev">Revenue, high to low</option></select></label>
+        <button id="spRun">Run</button>
+        <button id="spCsv" class="secondary" disabled>Download CSV</button>
+      </div>
+      <div id="spStatus"></div>
+      <div id="spSummary"></div>
+      <div class="tp-scroll"><table class="tp-table" id="spTable" style="display:none"></table></div>
     </div>
     <div id="kpiGrid"></div>
   </div>
@@ -2371,7 +2416,7 @@ async function tpRun() {
     } catch (e) { console.warn('AI context skipped', e); }
 
     const res = await runQuery(`
-      MATCH (c:Company) WHERE c.parentOnly IS NULL
+      MATCH (c:Company) WHERE c.parentOnly IS NULL AND NOT (c.succession = true AND coalesce(c.staff, 0) < 100)
       OPTIONAL MATCH (c)-[:IN_BRANCH]->(b:Branch)
       OPTIONAL MATCH (c)-[u:USES_ERP]->(e:ERPSystem)
       WITH c, b, collect(CASE WHEN e IS NULL THEN NULL ELSE
@@ -2585,6 +2630,143 @@ document.getElementById('tpCsv').onclick = tpCsv;
   document.getElementById(id).addEventListener('change', () => { if (TP.rows.length) tpRender(); }));
 tpLoadIndustryOptions();
 tpLoadFocusOptions();
+
+// ---- KPI 11: owner-managed companies (succession segment) --------------
+// Company-level signals only (no personal data, no ages): founding year, family / owner / succession wording on the company's own site,
+// independence (no GLEIF parent) and size band. companies/build_companies.py --segment succession -> :Company {succession: true}.
+const SP = { rows: [], rpw: {} };
+
+function spScore(r, foundedBy) {
+  let score = 0; const why = [];
+  const y = r.foundedYear;
+  if (y) {
+    const pts = y <= 1975 ? 30 : y <= 1985 ? 25 : y <= foundedBy ? 20 : y <= 2005 ? 5 : 0;
+    score += pts; why.push(`founded ${y}${y <= foundedBy ? ' (founder likely 60-75 today)' : ''}: +${pts}`);
+  } else why.push('founding year unknown: +0');
+  if (r.familyBusiness) { score += 20; why.push('family-business wording on its website: +20'); }
+  if (r.ownerLed) { score += 10; why.push('owner / founder wording on its website: +10'); }
+  if (r.successionWords) { score += 20; why.push('succession / hand-over wording on its website (verify): +20'); }
+  if (!r.parentName) { score += 10; why.push('independent (no parent company known): +10'); }
+  const sizeOk = (r.staff != null && r.staff >= 10 && r.staff <= 249) || (r.est != null && r.est >= 1e6 && r.est <= 49e6);
+  if (sizeOk) { score += 10; why.push('size fits (10-249 staff / EUR 1-49m): +10'); } else why.push('size unknown: +0');
+  return { score, why, signal: !!(r.familyBusiness || r.ownerLed || r.successionWords || (y && y <= foundedBy)) };
+}
+
+function spFiltered() {
+  const v = id => document.getElementById(id).value;
+  const num = (id, d) => { const x = Number(v(id)); return v(id) === '' || isNaN(x) ? d : x; };
+  const minRev = num('spMinRev', 0) * 1e6, maxRev = num('spMaxRev', 0) > 0 ? num('spMaxRev', 0) * 1e6 : Infinity;
+  const minStaff = num('spMinStaff', 0), maxStaff = num('spMaxStaff', 0) > 0 ? num('spMaxStaff', 0) : Infinity;
+  const foundedBy = num('spFounded', 1995), ind = v('spInd');
+  const unknownYear = document.getElementById('spUnknownYear').checked, unsized = document.getElementById('spUnsized').checked;
+  const signalOnly = document.getElementById('spSignalOnly').checked;
+  SP.rows.forEach(r => Object.assign(r, spScore(r, foundedBy)));
+  let rows = SP.rows.filter(r => {
+    const letter = (r.branch || '').charAt(0);
+    if (ind ? letter !== ind : !['C', 'G', 'H'].includes(letter)) return false;
+    if (['customer', 'partner', 'competitor', 'do-not-contact'].includes(r.accountStatus)) return false;
+    if (r.foundedYear ? r.foundedYear > foundedBy : !unknownYear) return false;
+    if (r.est != null && (r.est < minRev || r.est > maxRev)) return false;
+    if (r.staff != null && (r.staff < minStaff || r.staff > maxStaff)) return false;
+    if ((r.est == null && r.staff == null) && !unsized) return false;
+    if (signalOnly && !r.signal) return false;
+    return true;
+  });
+  const sortBy = v('spSort');
+  rows.sort(sortBy === 'founded' ? (a, b) => (a.foundedYear || 9999) - (b.foundedYear || 9999) || b.score - a.score
+    : sortBy === 'rev' ? (a, b) => (b.est || 0) - (a.est || 0) : (a, b) => b.score - a.score || (a.foundedYear || 9999) - (b.foundedYear || 9999));
+  return rows;
+}
+
+function spRender() {
+  const rows = spFiltered();
+  const status = document.getElementById('spStatus'), summary = document.getElementById('spSummary'), table = document.getElementById('spTable');
+  const sized = SP.rows.filter(r => r.est != null || r.staff != null).length;
+  status.className = '';
+  status.textContent = `${SP.rows.length.toLocaleString()} owner-managed companies loaded, ${sized.toLocaleString()} with a size; ${rows.length.toLocaleString()} match the filters.`;
+  summary.innerHTML = [
+    [rows.length.toLocaleString(), 'companies match'],
+    [rows.filter(r => r.foundedYear && r.foundedYear <= Number(document.getElementById('spFounded').value || 1995)).length.toLocaleString(), 'founder generation'],
+    [rows.filter(r => r.familyBusiness).length.toLocaleString(), 'family business'],
+    [rows.filter(r => r.successionWords).length.toLocaleString(), 'succession wording'],
+    [rows.filter(r => r.ownerLed).length.toLocaleString(), 'owner-led wording'],
+  ].map(([b, l]) => `<div class="tp-stat"><b>${escapeHtml(b)}</b><span>${escapeHtml(l)}</span></div>`).join('');
+  document.getElementById('spCsv').disabled = !rows.length;
+  if (!rows.length) { table.innerHTML = ''; table.style.display = 'none'; status.textContent += ' Nothing matches these filters.'; return; }
+  const head = `<tr><th>Score</th><th>Company</th><th>Industry</th><th class="num">Staff</th><th class="num">Revenue</th><th class="num">Founded</th><th>Signals</th><th>Why</th></tr>`;
+  const body = rows.slice(0, 500).map(r => {
+    const col = r.score >= 65 ? '#1e8e3e' : r.score >= 40 ? '#e0a100' : '#9aa0a6';
+    const chips = [r.familyBusiness ? 'family business' : '', r.ownerLed ? 'owner-led wording' : '', r.successionWords ? 'succession wording' : '',
+      !r.parentName ? 'independent' : ''].filter(Boolean).map(t => `<span class="sp-chip">${escapeHtml(t)}</span>`).join('');
+    const site = r.website ? `<a href="${escapeHtml(/^https?:/.test(r.website) ? r.website : 'https://' + r.website)}" target="_blank" rel="noopener">website</a>` : '';
+    const ev = r.successionEvidence ? `<div class="tp-sub">${escapeHtml(r.successionEvidence)}</div>` : '';
+    return `<tr><td><span class="tp-score" style="background:${col}">${r.score}</span></td>`
+      + `<td><b>${escapeHtml(r.name || '--')}</b><div class="tp-sub">${escapeHtml(r.city || '')} ${site}</div>`
+      + ((r.listSources || []).length ? `<div class="tp-sub">listed in: ${escapeHtml(r.listSources.join(' · '))}</div>` : '') + `</td>`
+      + `<td>${escapeHtml(r.branch ? r.branch.replace(/^[A-Z]\s+/, '') : '(no industry)')}</td>`
+      + `<td class="num">${r.staff != null ? r.staff.toLocaleString('nl-NL') : '--'}</td>`
+      + `<td class="num">${r.est == null ? '--' : (r.isEst ? '~' : '') + escapeHtml(fmtEuro(r.est))}<div class="tp-sub">${r.est == null ? 'size unknown' : r.isEst ? 'estimate' : 'published'}</div></td>`
+      + `<td class="num">${r.foundedYear || '--'}</td>`
+      + `<td>${chips}${ev}</td>`
+      + `<td class="tp-why">${escapeHtml(r.why.join(' · '))}<div class="tp-next">Next: confirm the owner on the company's own site / LinkedIn, then offer an ERP and data clean-up ahead of a hand-over.</div></td></tr>`;
+  }).join('');
+  table.innerHTML = head + body + (rows.length > 500 ? `<tr><td colspan="8" class="tp-sub">Showing the first 500 of ${rows.length.toLocaleString()} -- download the CSV for all.</td></tr>` : '');
+  table.style.display = '';
+}
+
+async function spRun() {
+  const status = document.getElementById('spStatus'), table = document.getElementById('spTable');
+  status.className = ''; status.textContent = 'Running against your Aura instance...';
+  document.getElementById('spSummary').innerHTML = ''; table.style.display = 'none'; document.getElementById('spCsv').disabled = true;
+  if (!driver) { status.className = 'err'; status.textContent = 'Connect to Aura above first.'; return; }
+  try {
+    const n = v => (v && typeof v === 'object' && typeof v.low === 'number') ? v.toNumber() : v;
+    SP.rpw = {};
+    try {    // revenue per worker per industry (CBS 81156NED) from KPI 2's own query, to estimate revenue for companies without a published figure
+      const k2 = KPI_DEFINITIONS.find(k => k.n === 2);
+      const ind = await runQuery(k2.cypher, {});
+      (ind ? ind.records : []).forEach(r => {
+        const rev = r.has('indRevenueMln') ? n(r.get('indRevenueMln')) : null, w = r.has('indWorkersK') ? n(r.get('indWorkersK')) : null;
+        SP.rpw[r.get('label')] = revenuePerWorker(rev == null ? null : Number(rev), w == null ? null : Number(w));
+      });
+    } catch (e) { console.warn('industry context skipped', e); }
+    const res = await runQuery(`
+      MATCH (c:Company) WHERE c.succession = true
+      OPTIONAL MATCH (c)-[:IN_BRANCH]->(b:Branch)
+      RETURN c {.name, .kvk, .city, .staff, .revenue, .revenueYear, .website, .parentName, .foundedYear, .familyBusiness, .successionWords,
+                .successionEvidence, .ownerLed, .listSources, .accountStatus, .noMarketing} AS c, b.prefLabelNl AS branch
+      LIMIT 20000`, {});
+    if (!res) throw new Error((document.getElementById('statusText') || {}).textContent || 'query failed (see console)');
+    SP.rows = res.records.map(r => {
+      const c = r.get('c'), branch = r.get('branch');
+      const staff = n(c.staff) == null ? null : Number(n(c.staff));
+      const exact = n(c.revenue) == null ? null : Number(n(c.revenue));
+      const rpw = branch ? SP.rpw[branch] : null;
+      const est = exact != null ? exact : (rpw && staff != null ? staff * rpw : null);
+      const foundedYear = n(c.foundedYear) == null ? null : Number(n(c.foundedYear));
+      return { ...c, staff, foundedYear, est, isEst: exact == null && est != null, branch };
+    });
+    if (!SP.rows.length) {
+      status.textContent = 'No owner-managed companies loaded yet. Run the "CBS companies" workflow with the succession segment on (companies/README.md), then try again.';
+      return;
+    }
+    spRender();
+  } catch (e) { status.className = 'err'; status.textContent = 'Failed: ' + e.message; }
+}
+
+function spCsv() {
+  const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const head = ['score', 'company', 'kvk', 'industry', 'city', 'staff', 'revenue_eur', 'revenue_basis', 'founded', 'family_business', 'owner_led_wording', 'succession_wording', 'succession_evidence', 'independent', 'why', 'website', 'listed_in'];
+  const lines = spFiltered().map(r => [r.score, r.name, r.kvk, r.branch, r.city, r.staff, r.est == null ? '' : Math.round(r.est), r.est == null ? 'unknown' : r.isEst ? 'estimate' : 'published',
+    r.foundedYear, r.familyBusiness ? 'yes' : '', r.ownerLed ? 'yes' : '', r.successionWords ? 'yes' : '', r.successionEvidence || '', r.parentName ? 'no' : 'yes',
+    r.why.join(' | '), r.website, (r.listSources || []).join(' | ')].map(q).join(','));
+  const blob = new Blob(['﻿' + head.join(',') + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'succession_targets.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+document.getElementById('spRun').onclick = spRun;
+document.getElementById('spCsv').onclick = spCsv;
+['spInd', 'spMinRev', 'spMaxRev', 'spMinStaff', 'spMaxStaff', 'spFounded', 'spUnknownYear', 'spUnsized', 'spSignalOnly', 'spSort'].forEach(id =>
+  document.getElementById(id).addEventListener('change', () => { if (SP.rows.length) spRender(); }));
 
 async function toggleDrill(kpi, branchLabel, tr) {
   const existing = tr.nextElementSibling;

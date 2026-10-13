@@ -38,6 +38,16 @@ REV_RE_A = re.compile(r"(?i)(?:omzet|revenue|turnover)[^€]{0,45}?(?:€|eur(?:
 REV_RE_B = re.compile(r"(?i)(?:€|eur(?:o)?)\s*(\d[\d.,]*)\s*(miljoen|mln|million|miljard|billion|bn)\b[^€]{0,25}?(?:omzet|revenue|turnover)")
 
 
+FOUNDED_RE = re.compile(r"(?i)(?:sinds|opgericht(?:\s+in)?|gesticht(?:\s+in)?|bestaat\s+sinds|founded(?:\s+in)?|since|established(?:\s+in)?|\best\.?|anno)\s*"
+                        r"(1[89]\d\d|20[0-2]\d)\b")
+FAMILY_RE = re.compile(r"(?i)familiebedrijf|familie-?onderneming|family[- ]owned|family[- ]run|family business|"
+                       r"(?:tweede|derde|vierde|2e|3e|4e|2de|3de|4de)\s*generatie|(?:second|third|fourth)[- ]generation")
+SUCCESSION_RE = re.compile(r"(?i)bedrijfsopvolging|opvolgingsvraag|opvolging\b|bedrijfsoverdracht|overdracht van (?:het )?bedrijf|"
+                           r"bedrijf te koop|te koop aangeboden|business succession|succession plan")
+OWNER_RE = re.compile(r"(?i)directeur[- ]?(?:en[- ])?eigenaar|eigenaar[- ]?directeur|eigenaar en oprichter|oprichter en (?:directeur|eigenaar)|"
+                      r"founder (?:and|&) (?:owner|ceo|director)|owner[- ]manager|eigenaar van (?:het|dit) bedrijf")
+
+
 def _num(txt):
     s = txt.replace(" ", "")
     if "," in s and "." in s:
@@ -99,6 +109,17 @@ def extract_facts(html, url):
         f["staff"] = int(max(staff))
         sm = STAFF_RE.search(text)
         f["staffEvidence"] = "..." + text[max(0, sm.start() - 50):sm.end() + 30].strip() + "..."
+    years = [int(y) for y in FOUNDED_RE.findall(text) if 1850 <= int(y) <= 2020]
+    if years:
+        f["foundedYear"] = min(years)
+    if FAMILY_RE.search(text):
+        f["familyBusiness"] = True
+    sm_ = SUCCESSION_RE.search(text)
+    if sm_:
+        f["successionWords"] = True
+        f["successionEvidence"] = "..." + text[max(0, sm_.start() - 50):sm_.end() + 50].strip() + "..."
+    if OWNER_RE.search(text):
+        f["ownerLed"] = True
     for rx in (REV_RE_A, REV_RE_B):
         rm = rx.search(text)
         if rm:
@@ -114,6 +135,9 @@ def extract_facts(html, url):
         if "PostalAddress" in t and "address" not in f and (node.get("streetAddress") or node.get("postalCode")):
             f["address"] = {"street": _txt(node.get("streetAddress")), "postcode": _txt(node.get("postalCode")), "city": _txt(node.get("addressLocality"))}
         if re.search(r"Organization|Corporation|LocalBusiness", t):
+            fd = re.match(r"(\d{4})", str(node.get("foundingDate") or ""))
+            if fd and "foundedYear" not in f and 1850 <= int(fd.group(1)) <= 2020:
+                f["foundedYear"] = int(fd.group(1))
             ne = node.get("numberOfEmployees")
             val = ne.get("value") if isinstance(ne, dict) else ne
             try:
@@ -172,6 +196,7 @@ def main():
     ap.add_argument("--source", choices=["wikidata", "companies"], default="wikidata")
     ap.add_argument("--max", type=int, default=600, help="max websites to scan (default 600)")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--smb", action="store_true", help="scan small / unsized companies first (succession segment) instead of the biggest first")
     a = ap.parse_args()
     cands = read_json(LANDING / ("wikidata_revenue.json" if a.source == "wikidata" else "companies.json"), [])
     done = read_json(OUT, {})
@@ -179,7 +204,10 @@ def main():
     # who benefits most: no KvK number yet, no staff count, or no industry -- and the biggest first
     def need(c):
         return (str(c["kvk"]).startswith(("wd-", "list-"))) + (c.get("employees") is None and c.get("staff") is None) + (not (c.get("naceCodes") or c.get("industries")))
-    todo.sort(key=lambda c: (-need(c), -(c.get("revenue") or 0) - (c.get("employees") or c.get("staff") or 0)))
+    if a.smb:      # owner-managed SMEs: unknown or small staff count first
+        todo.sort(key=lambda c: ((c.get("employees") or c.get("staff") or 0) >= 250, c.get("employees") is not None))
+    else:
+        todo.sort(key=lambda c: (-need(c), -(c.get("revenue") or 0) - (c.get("employees") or c.get("staff") or 0)))
     todo = todo[: a.max]
     print(f"Website facts: {len(cands):,} candidates, {len(done):,} already scanned, scanning {len(todo):,} websites "
           f"({a.workers} at a time, robots.txt respected)...")
